@@ -45,6 +45,29 @@ class FakeWebConnector:
         )
 
 
+class CrashingWebConnector:
+    def collect(self, request):
+        raise TimeoutError("simulated read timeout")
+
+
+class StatefulManualConnector:
+    connector_id = "manual"
+
+    def collect(self, request):
+        return CollectionResult(
+            source_id=request.source_id,
+            connector=self.connector_id,
+            rows=[
+                {
+                    "source_id": request.source_id,
+                    "connector": self.connector_id,
+                    "title": "manual row",
+                    "text": "manual evidence row",
+                }
+            ],
+        )
+
+
 def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     engine = ResearchEngine(output_dir=tmp_path)
 
@@ -60,6 +83,22 @@ def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     assert result.raw_rows == 0
     assert json.loads((run_dir / "run_manifest.json").read_text())["status"] == "planned"
     assert json.loads((run_dir / "query_plan.json").read_text())["pack"]["id"] == "memory_cycle"
+
+
+def test_runner_marks_non_dry_run_without_sources_as_failed_no_sources(tmp_path):
+    engine = ResearchEngine(output_dir=tmp_path)
+
+    result = engine.run(
+        "restaurant lease negotiation",
+        run_date="2026-06-21",
+        slug="generic-empty",
+    )
+
+    manifest = json.loads((tmp_path / "2026-06-21-generic-empty/run_manifest.json").read_text())
+    assert result.status == "failed_no_sources"
+    assert result.raw_rows == 0
+    assert manifest["status"] == "failed_no_sources"
+    assert "no executable sources" in " ".join(result.warnings)
 
 
 def test_runner_collects_with_injected_connectors_and_writes_synthesis(tmp_path):
@@ -101,3 +140,59 @@ def test_cli_run_subcommand_accepts_pack_auto(tmp_path, capsys):
     assert exit_code == 0
     assert payload["pack_id"] == "memory_cycle"
     assert (tmp_path / payload["run_id"] / "query_plan.json").exists()
+
+
+def test_runner_preserves_artifacts_when_connector_crashes(tmp_path):
+    engine = ResearchEngine(
+        output_dir=tmp_path,
+        connectors={
+            "finance_quote": FakeFinanceConnector,
+            "web_page": CrashingWebConnector,
+        },
+    )
+
+    result = engine.run(
+        "DRAM HBM shortage",
+        run_date="2026-06-21",
+        slug="connector-crash",
+    )
+
+    run_dir = tmp_path / "2026-06-21-connector-crash"
+    manifest = json.loads((run_dir / "run_manifest.json").read_text())
+    rows = [json.loads(line) for line in (run_dir / "evidence.jsonl").read_text().splitlines()]
+
+    assert result.raw_rows == 1
+    assert "web_page connector crashed" in " ".join(result.warnings)
+    assert manifest["warnings"] == result.warnings
+    assert rows[0]["connector"] == "finance_quote"
+
+
+def test_runner_accepts_connector_instances(tmp_path):
+    pack_dir = tmp_path / "packs"
+    pack_dir.mkdir()
+    (pack_dir / "generic.json").write_text(
+        json.dumps(
+            {
+                "id": "generic",
+                "label": "Generic",
+                "sources": [
+                    {
+                        "source_id": "manual_rows",
+                        "connector": "manual",
+                        "rows": [{"title": "ignored by stateful connector"}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = ResearchEngine(
+        output_dir=tmp_path / "runs",
+        pack_dir=pack_dir,
+        connectors={"manual": StatefulManualConnector()},
+    )
+
+    result = engine.run("unmatched generic topic", run_date="2026-06-21", slug="instance")
+
+    assert result.status == "complete"
+    assert result.raw_rows == 1

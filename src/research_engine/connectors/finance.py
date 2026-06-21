@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from research_engine.models import CollectionRequest, CollectionResult, utc_now
@@ -23,7 +22,7 @@ class FinanceQuoteConnector:
                 continue
             try:
                 quote = fetch_quote(symbol)
-            except (URLError, KeyError, IndexError, json.JSONDecodeError) as exc:
+            except Exception as exc:
                 warnings.append(f"finance_quote failed for {symbol}: {exc}")
                 continue
             meta = quote["chart"]["result"][0]["meta"]

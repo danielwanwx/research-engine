@@ -39,6 +39,7 @@ class ResearchRunResult:
     run_dir: str
     topic: str
     pack_id: str
+    status: str
     dry_run: bool
     raw_rows: int
     warnings: list[str] = field(default_factory=list)

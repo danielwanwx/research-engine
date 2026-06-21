@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from research_engine.artifacts import render_report, slugify, write_json, write_jsonl
 from research_engine.connectors import FinanceQuoteConnector, ManualConnector, WebPageConnector
@@ -17,7 +17,9 @@ from research_engine.synthesis import (
 )
 
 
-DEFAULT_CONNECTORS = {
+ConnectorProvider = Any | Callable[[], Any]
+
+DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
     FinanceQuoteConnector.connector_id: FinanceQuoteConnector,
     ManualConnector.connector_id: ManualConnector,
     WebPageConnector.connector_id: WebPageConnector,
@@ -32,7 +34,7 @@ class ResearchEngine:
         *,
         pack_dir: Path | None = None,
         output_dir: Path | None = None,
-        connectors: dict[str, Any] | None = None,
+        connectors: dict[str, ConnectorProvider] | None = None,
     ) -> None:
         self.pack_dir = pack_dir
         self.output_dir = output_dir or Path("runs")
@@ -73,23 +75,29 @@ class ResearchEngine:
         }
         collection_results: list[CollectionResult] = []
         warnings: list[str] = []
+        if not dry_run and not source_requests:
+            warnings.append(f"research pack {selected_pack.get('id')} has no executable sources")
         if not dry_run:
             for source in source_requests:
                 connector_id = str(source.source.get("connector") or "")
-                factory = self.connector_factories.get(connector_id)
-                if not factory:
+                provider = self.connector_factories.get(connector_id)
+                if not provider:
                     warnings.append(f"no connector registered for {connector_id}")
                     continue
-                connector = factory()
-                result = connector.collect(
-                    CollectionRequest(
-                        source=source.source,
-                        topic=topic,
-                        run_date=resolved_date,
-                        depth=depth,
-                        max_results=max_results,
+                connector = provider() if callable(provider) else provider
+                try:
+                    result = connector.collect(
+                        CollectionRequest(
+                            source=source.source,
+                            topic=topic,
+                            run_date=resolved_date,
+                            depth=depth,
+                            max_results=max_results,
+                        )
                     )
-                )
+                except Exception as exc:
+                    warnings.append(f"{connector_id} connector crashed for {source.source_id}: {exc}")
+                    continue
                 collection_results.append(result)
                 warnings.extend(result.warnings)
         rows = normalize_rows(collection_results)
@@ -106,11 +114,12 @@ class ResearchEngine:
             claim_review=claim_review,
             matrix=matrix,
         )
+        status = run_status(dry_run=dry_run, rows=rows, warnings=warnings, source_requests=source_requests)
         manifest = {
             "run_id": run_id,
             "topic": topic,
             "created_at": utc_now(),
-            "status": "planned" if dry_run else "complete",
+            "status": status,
             "pack": pack_summary(selected_pack),
             "warnings": warnings,
         }
@@ -135,6 +144,7 @@ class ResearchEngine:
             run_dir=str(run_dir),
             topic=topic,
             pack_id=str(selected_pack.get("id") or "generic"),
+            status=status,
             dry_run=dry_run,
             raw_rows=len(rows),
             warnings=warnings,
@@ -189,3 +199,19 @@ def normalize_rows(results: list[CollectionResult]) -> list[dict[str, Any]]:
             normalized["evidence_id"] = normalized.get("evidence_id") or f"ev-{len(rows) + 1:04d}"
             rows.append(normalized)
     return rows
+
+
+def run_status(
+    *,
+    dry_run: bool,
+    rows: list[dict[str, Any]],
+    warnings: list[str],
+    source_requests: list[CollectionRequest],
+) -> str:
+    if dry_run:
+        return "planned"
+    if not source_requests:
+        return "failed_no_sources"
+    if rows:
+        return "complete_with_warnings" if warnings else "complete"
+    return "failed_no_rows" if warnings else "complete_empty"

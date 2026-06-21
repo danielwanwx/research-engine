@@ -14,16 +14,20 @@ PACKAGE_PACK_DIR = Path(__file__).resolve().parent / "default_packs"
 
 
 def load_research_packs(pack_dir: Path | None = None) -> list[dict[str, Any]]:
-    resolved = pack_dir or (PROJECT_PACK_DIR if PROJECT_PACK_DIR.exists() else PACKAGE_PACK_DIR)
-    packs: list[dict[str, Any]] = []
-    if resolved.exists():
+    pack_dirs = [PACKAGE_PACK_DIR]
+    overlay_dir = pack_dir or PROJECT_PACK_DIR
+    if overlay_dir.exists() and overlay_dir.resolve() != PACKAGE_PACK_DIR.resolve():
+        pack_dirs.append(overlay_dir)
+    packs_by_id: dict[str, dict[str, Any]] = {}
+    for resolved in pack_dirs:
         for path in sorted(resolved.glob("*.json")):
             payload = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(payload, dict):
-                packs.append(normalize_pack(payload, path=path))
-    if not any(pack.get("id") == DEFAULT_PACK_ID for pack in packs):
-        packs.append(normalize_pack({"id": DEFAULT_PACK_ID}, path=None))
-    return packs
+                pack = normalize_pack(payload, path=path)
+                packs_by_id[str(pack["id"])] = pack
+    if DEFAULT_PACK_ID not in packs_by_id:
+        packs_by_id[DEFAULT_PACK_ID] = normalize_pack({"id": DEFAULT_PACK_ID}, path=None)
+    return list(packs_by_id.values())
 
 
 def select_research_pack(

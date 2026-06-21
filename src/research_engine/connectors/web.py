@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from html.parser import HTMLParser
-from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from research_engine.models import CollectionRequest, CollectionResult, utc_now
@@ -47,7 +46,7 @@ class WebPageConnector:
                 continue
             try:
                 text = fetch_text(url)
-            except URLError as exc:
+            except Exception as exc:
                 warnings.append(f"web_page failed for {url}: {exc}")
                 continue
             rows.append(
