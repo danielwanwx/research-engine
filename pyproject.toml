@@ -22,10 +22,6 @@ classifiers = [
 ]
 dependencies = []
 
-[project.urls]
-Homepage = "https://github.com/example/research-engine"
-Issues = "https://github.com/example/research-engine/issues"
-
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.8"]
 
