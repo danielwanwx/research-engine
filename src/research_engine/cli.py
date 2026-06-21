@@ -5,29 +5,40 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
 from research_engine.runner import ResearchEngine
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run pack-driven research collection.")
-    parser.add_argument("topic", help="Research topic or question.")
-    parser.add_argument("--depth", choices=["quick", "deep", "audit"], default="quick")
-    parser.add_argument("--pack", dest="pack_id", help="Force a specific pack id.")
-    parser.add_argument("--pack-dir", type=Path, help="Directory containing JSON research packs.")
-    parser.add_argument("--output", type=Path, default=Path("runs"), help="Output directory.")
-    parser.add_argument("--dry-run", action="store_true", help="Write plan artifacts without collection.")
+    subparsers = parser.add_subparsers(dest="command")
+    run_parser = subparsers.add_parser("run", help="Run a research collection.")
+    add_run_arguments(run_parser)
     return parser
 
 
+def add_run_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("topic", help="Research topic or question.")
+    parser.add_argument("--depth", choices=["quick", "deep", "audit"], default="quick")
+    parser.add_argument("--pack", dest="pack_id", default="auto", help="Pack id, or 'auto'.")
+    parser.add_argument("--pack-dir", type=Path, help="Directory containing JSON research packs.")
+    parser.add_argument("--output", type=Path, default=Path("runs"), help="Output directory.")
+    parser.add_argument("--dry-run", action="store_true", help="Write plan artifacts without collection.")
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    if raw_args and raw_args[0] != "run" and not raw_args[0].startswith("-"):
+        raw_args.insert(0, "run")
+    args = build_parser().parse_args(raw_args)
+    pack_id = None if args.pack_id in {None, "", "auto"} else args.pack_id
     engine = ResearchEngine(pack_dir=args.pack_dir, output_dir=args.output)
     result = engine.run(
         args.topic,
         depth=args.depth,
         dry_run=args.dry_run,
-        pack_id=args.pack_id,
+        pack_id=pack_id,
     )
     print(json.dumps(result.as_dict(), ensure_ascii=False, indent=2))
     return 0

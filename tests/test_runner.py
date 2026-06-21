@@ -1,5 +1,6 @@
 import json
 
+from research_engine.cli import main
 from research_engine.models import CollectionResult
 from research_engine.runner import ResearchEngine
 
@@ -80,3 +81,23 @@ def test_runner_collects_with_injected_connectors_and_writes_synthesis(tmp_path)
     assert result.raw_rows == 2
     assert json.loads((run_dir / "claim_review.json").read_text())["overall"]["stance"] == "supported"
     assert (run_dir / "research_report.md").read_text().startswith("# Research Report")
+
+
+def test_cli_run_subcommand_accepts_pack_auto(tmp_path, capsys):
+    exit_code = main(
+        [
+            "run",
+            "DRAM HBM shortage",
+            "--pack",
+            "auto",
+            "--dry-run",
+            "--output",
+            str(tmp_path),
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["pack_id"] == "memory_cycle"
+    assert (tmp_path / payload["run_id"] / "query_plan.json").exists()
