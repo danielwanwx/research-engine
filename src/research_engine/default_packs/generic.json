@@ -1,0 +1,13 @@
+{
+  "id": "generic",
+  "label": "Generic research",
+  "profile": "generic",
+  "intent": "general_research",
+  "match_terms": [],
+  "query_templates": [
+    {"tier": "public_connector", "template": "{topic}"},
+    {"tier": "web", "template": "{topic} latest evidence"},
+    {"tier": "social_audit", "template": "{topic}"}
+  ],
+  "sources": []
+}

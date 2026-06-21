@@ -1,0 +1,110 @@
+{
+  "id": "memory_cycle",
+  "label": "Memory cycle market research",
+  "profile": "memory_cycle",
+  "intent": "financial_market_research",
+  "match_terms": [
+    "dram",
+    "nand",
+    "hbm",
+    "memory cycle",
+    "micron",
+    "$mu",
+    "mu",
+    "sandisk",
+    "sndk",
+    "sk hynix",
+    "hynix",
+    "海力士"
+  ],
+  "query_templates": [
+    {"tier": "public_connector", "template": "{topic}"},
+    {"tier": "official_ir", "template": "{topic} company results guidance supply demand"},
+    {"tier": "market_research", "template": "{topic} pricing supply shortage forecast"},
+    {"tier": "finance_quote", "template": "{topic} stock price valuation risk"},
+    {"tier": "social_audit", "template": "{topic} investor discussion forum sentiment"}
+  ],
+  "finance_tickers": [
+    {"symbol": "MU", "name": "Micron Technology"},
+    {"symbol": "SNDK", "name": "Sandisk"},
+    {"symbol": "000660.KS", "name": "SK hynix"},
+    {"symbol": "005930.KS", "name": "Samsung Electronics"}
+  ],
+  "web_pages": [
+    {
+      "url": "https://www.trendforce.com/presscenter/news/20260331-12995.html",
+      "title": "TrendForce 2Q26 memory contract price forecast",
+      "publisher": "TrendForce",
+      "source_confidence": "high"
+    },
+    {
+      "url": "https://investors.micron.com/news-releases/news-release-details/micron-technology-inc-reports-results-second-quarter-fiscal-2026",
+      "title": "Micron fiscal Q2 2026 results",
+      "publisher": "Micron Technology",
+      "source_confidence": "high"
+    }
+  ],
+  "claim_specs": [
+    {
+      "claim_id": "price_acceleration",
+      "question": "Are contract prices rising sharply in the current cycle?",
+      "keywords": ["contract prices", "qoq", "price", "pricing", "asp"],
+      "min_evidence": 1
+    },
+    {
+      "claim_id": "supply_tightness",
+      "question": "Is supply tightness visible in public evidence?",
+      "keywords": ["tight supply", "shortage", "limited supply", "capacity"],
+      "min_evidence": 1
+    },
+    {
+      "claim_id": "fundamental_leverage",
+      "question": "Are suppliers showing operating leverage?",
+      "keywords": ["revenue", "operating profit", "gross margin", "record", "margin"],
+      "min_evidence": 1
+    }
+  ],
+  "matrix_nodes": [
+    {
+      "node_id": "ai_infrastructure_demand",
+      "side": "demand",
+      "label": "AI infrastructure demand",
+      "keywords": ["ai infrastructure", "data center", "compute capacity", "hbm"],
+      "min_evidence": 1
+    },
+    {
+      "node_id": "capacity_constraint",
+      "side": "constraint",
+      "label": "Capacity constraint",
+      "keywords": ["tight supply", "limited supply", "capacity", "shortage"],
+      "min_evidence": 1
+    }
+  ],
+  "matrix_entities": {
+    "demand_side": {
+      "NVIDIA": "nvidia",
+      "Microsoft": "microsoft",
+      "Amazon": "amazon"
+    },
+    "supply_side": {
+      "SK hynix": "sk hynix",
+      "Micron": "micron",
+      "Samsung": "samsung",
+      "Sandisk": "sandisk"
+    }
+  },
+  "decision_rules": {
+    "supported_claims_for_supported": 2,
+    "supported_claims_for_high_confidence": 3,
+    "supported_or_partial_for_partial": 2,
+    "action_bias_by_stance": {
+      "supported": "constructive_but_verify_price_and_valuation",
+      "partially_supported": "wait_for_confirmation"
+    },
+    "stance_summaries": {
+      "supported": "{profile_label} thesis is supported across {supported_count} claim buckets.",
+      "partially_supported": "{profile_label} thesis is partially supported ({supported_count} supported, {partial_count} partial).",
+      "default": "Evidence is not yet sufficient for a strong {profile_label} conclusion."
+    }
+  }
+}
