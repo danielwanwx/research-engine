@@ -9,7 +9,22 @@ description = "Pack-driven evidence collection and research synthesis engine"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+authors = [{ name = "Research Engine contributors" }]
+keywords = ["research", "evidence", "agents", "connectors", "synthesis"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/example/research-engine"
+Issues = "https://github.com/example/research-engine/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.8"]

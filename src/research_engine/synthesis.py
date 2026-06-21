@@ -99,6 +99,9 @@ def build_decision_brief(
     rules = pack.get("decision_rules") or {}
     stance = str(overall.get("stance") or "unknown")
     action_bias = (rules.get("action_bias_by_stance") or {}).get(stance) or "analyze_before_action"
+    not_investment_advice = bool(
+        rules.get("not_investment_advice") or pack.get("intent") == "financial_market_research"
+    )
     return {
         "generated_at": utc_now(),
         "topic": topic,
@@ -112,7 +115,8 @@ def build_decision_brief(
             f"{len([claim for claim in claim_review.get('claims') or [] if claim.get('verdict') == 'supported'])} claim buckets are supported.",
             f"Matrix gap assessment: {(matrix.get('summary') or {}).get('gap_assessment') or 'unknown'}.",
         ],
-        "not_investment_advice": True,
+        "not_investment_advice": not_investment_advice,
+        "not_professional_advice": True,
     }
 
 

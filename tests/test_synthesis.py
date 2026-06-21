@@ -46,3 +46,19 @@ def test_pack_claims_and_matrix_score_evidence():
     assert matrix["summary"]["gap_assessment"] == "demand_outpacing_near_term_supply"
     assert brief["action_bias"] == "constructive_but_verify_price_and_valuation"
     assert brief["not_investment_advice"] is True
+    assert brief["not_professional_advice"] is True
+
+
+def test_generic_decision_brief_is_not_marked_as_investment_advice():
+    pack = {"id": "generic", "label": "Generic", "intent": "general_research"}
+    review = build_claim_review(topic="restaurant lease research", pack=pack, rows=[], warnings=[])
+    matrix = build_supply_demand_matrix(topic="restaurant lease research", pack=pack, rows=[])
+    brief = build_decision_brief(
+        topic="restaurant lease research",
+        pack=pack,
+        claim_review=review,
+        matrix=matrix,
+    )
+
+    assert brief["not_investment_advice"] is False
+    assert brief["not_professional_advice"] is True

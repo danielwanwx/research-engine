@@ -94,6 +94,7 @@
     }
   },
   "decision_rules": {
+    "not_investment_advice": true,
     "supported_claims_for_supported": 2,
     "supported_claims_for_high_confidence": 3,
     "supported_or_partial_for_partial": 2,

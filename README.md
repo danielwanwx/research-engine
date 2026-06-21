@@ -6,6 +6,12 @@ This project is the standalone/open-source direction for the Research Engine. It
 
 ## Quick Start
 
+Requires Python 3.10 or newer.
+
+```bash
+python -m pip install .
+```
+
 ```bash
 research-engine run "research AI agent coding tools" --pack auto --dry-run --output runs
 research-engine run "research DRAM HBM supply shortage" --pack auto --output runs
@@ -23,6 +29,10 @@ For local development:
 python -m pytest -q
 python -m ruff check src tests
 ```
+
+## Data Source Limits
+
+The built-in connectors use public endpoints and static page fetches. They do not bypass paywalls, login walls, robots controls, broker entitlements, or platform rate limits. A run may finish as `complete_with_warnings`, `failed_no_sources`, or `failed_no_rows`; inspect `run_manifest.json` before passing artifacts to an LLM.
 
 ## Concepts
 
@@ -53,6 +63,23 @@ Connectors implement a small `collect(CollectionRequest) -> CollectionResult` in
 
 Additional platform integrations should live behind this same connector interface so the core runner remains source-agnostic.
 
+Minimal connector example:
+
+```python
+from research_engine.models import CollectionResult
+
+
+class MyConnector:
+    connector_id = "my_source"
+
+    def collect(self, request):
+        return CollectionResult(
+            source_id=request.source_id,
+            connector=self.connector_id,
+            rows=[{"title": "Example", "url": "https://example.com", "text": "Evidence"}],
+        )
+```
+
 ## Artifact Output
 
 Each run writes:
@@ -65,10 +92,12 @@ Each run writes:
 - `decision_brief.json`
 - `research_report.md`
 
+`run_manifest.json` includes `status` and connector warnings. `evidence.jsonl` is the source trace an LLM should cite from, not a hidden intermediate.
+
 ## Roadmap
 
 - Add richer local-file/manual evidence import from CLI.
 - Add optional logged-in browser collectors as external connectors, not core assumptions.
-- Add an Agent Reach bridge as an upstream capability layer: Agent Reach can discover/deep-crawl sources, then pass normalized rows into this engine for traceable artifact writing and deterministic synthesis.
+- Add an Agent Reach bridge as an optional upstream capability layer, not a runtime dependency: Agent Reach can discover/deep-crawl sources, then pass normalized rows into this engine for traceable artifact writing and deterministic synthesis.
 - Add pack schema validation and examples for more domains.
 - Add async connector execution and retry/caching policies after the synchronous API is stable.
