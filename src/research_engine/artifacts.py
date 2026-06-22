@@ -31,8 +31,10 @@ def render_report(
     raw_rows: list[dict[str, Any]],
     claim_review: dict[str, Any],
     decision_brief: dict[str, Any],
+    quality_report: dict[str, Any] | None = None,
 ) -> str:
     overall = claim_review.get("overall") or {}
+    quality = quality_report or {}
     lines = [
         f"# Research Report: {topic}",
         "",
@@ -41,11 +43,20 @@ def render_report(
         f"- Stance: `{overall.get('stance') or 'unknown'}`",
         f"- Confidence: `{overall.get('confidence') or 'unknown'}`",
         f"- Action bias: `{decision_brief.get('action_bias') or 'unknown'}`",
+        f"- Average evidence quality: `{quality.get('average_quality_score', 0.0)}`",
+        f"- Duplicate clusters: `{quality.get('duplicate_cluster_count', 0)}`",
+        f"- Conflict flags: `{len(quality.get('conflict_flags') or [])}`",
         "",
         "## Evidence",
     ]
     for row in raw_rows[:20]:
         title = str(row.get("title") or row.get("url") or "Untitled")
         url = str(row.get("url") or row.get("source_url") or "")
-        lines.append(f"- [{title}]({url})")
+        tier = str(row.get("quality_tier") or "unknown")
+        duplicate = " duplicate" if row.get("is_duplicate") else ""
+        lines.append(f"- [{title}]({url}) - quality `{tier}`{duplicate}")
+    if quality.get("warnings"):
+        lines.extend(["", "## Evidence Quality Warnings"])
+        for warning in quality.get("warnings") or []:
+            lines.append(f"- {warning}")
     return "\n".join(lines) + "\n"

@@ -10,6 +10,7 @@ from research_engine.artifacts import render_report, slugify, write_json, write_
 from research_engine.connectors import FinanceQuoteConnector, ManualConnector, WebPageConnector
 from research_engine.models import CollectionRequest, CollectionResult, ResearchRunResult, utc_now
 from research_engine.packs import build_pack_queries, pack_summary, select_research_pack
+from research_engine.quality import enrich_rows_with_quality
 from research_engine.synthesis import (
     build_claim_review,
     build_decision_brief,
@@ -101,11 +102,12 @@ class ResearchEngine:
                 collection_results.append(result)
                 warnings.extend(result.warnings)
         rows = normalize_rows(collection_results)
+        rows, quality_report = enrich_rows_with_quality(rows, topic=topic, pack=selected_pack)
         claim_review = build_claim_review(
             topic=topic,
             pack=selected_pack,
             rows=rows,
-            warnings=warnings,
+            warnings=[*warnings, *quality_report.get("warnings", [])],
         )
         matrix = build_supply_demand_matrix(topic=topic, pack=selected_pack, rows=rows)
         decision_brief = build_decision_brief(
@@ -122,10 +124,16 @@ class ResearchEngine:
             "status": status,
             "pack": pack_summary(selected_pack),
             "warnings": warnings,
+            "quality_summary": {
+                "average_quality_score": quality_report.get("average_quality_score"),
+                "duplicate_cluster_count": quality_report.get("duplicate_cluster_count"),
+                "conflict_flag_count": len(quality_report.get("conflict_flags") or []),
+            },
         }
         write_json(run_dir / "run_manifest.json", manifest)
         write_json(run_dir / "query_plan.json", query_plan)
         write_jsonl(run_dir / "evidence.jsonl", rows)
+        write_json(run_dir / "evidence_quality.json", quality_report)
         write_json(run_dir / "claim_review.json", claim_review)
         write_json(run_dir / "supply_demand_matrix.json", matrix)
         write_json(run_dir / "decision_brief.json", decision_brief)
@@ -136,6 +144,7 @@ class ResearchEngine:
                 raw_rows=rows,
                 claim_review=claim_review,
                 decision_brief=decision_brief,
+                quality_report=quality_report,
             ),
             encoding="utf-8",
         )

@@ -119,6 +119,9 @@ def test_runner_collects_with_injected_connectors_and_writes_synthesis(tmp_path)
     run_dir = tmp_path / "2026-06-21-memory-collect"
     assert result.raw_rows == 2
     assert json.loads((run_dir / "claim_review.json").read_text())["overall"]["stance"] == "supported"
+    assert json.loads((run_dir / "evidence_quality.json").read_text())["row_count"] == 2
+    first_row = json.loads((run_dir / "evidence.jsonl").read_text().splitlines()[0])
+    assert first_row["quality_tier"] in {"medium", "high"}
     assert (run_dir / "research_report.md").read_text().startswith("# Research Report")
 
 

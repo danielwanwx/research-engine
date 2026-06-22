@@ -39,6 +39,7 @@ The built-in connectors use public endpoints and static page fetches. They do no
 - **Research packs**: topic profiles with match terms, query templates, source hints, claim specs, and matrix nodes.
 - **Connectors**: source-specific collectors that return normalized evidence rows.
 - **Runner**: chooses a pack, builds a query plan, runs connectors, writes artifacts.
+- **Evidence quality**: deterministic source scoring, duplicate detection, and directional conflict flags written before synthesis.
 - **Synthesis**: deterministic scoring over collected evidence; LLM analysis happens after the traceable evidence pack exists.
 
 ## Pack Model
@@ -87,12 +88,13 @@ Each run writes:
 - `run_manifest.json`
 - `query_plan.json`
 - `evidence.jsonl`
+- `evidence_quality.json`
 - `claim_review.json`
 - `supply_demand_matrix.json`
 - `decision_brief.json`
 - `research_report.md`
 
-`run_manifest.json` includes `status` and connector warnings. `evidence.jsonl` is the source trace an LLM should cite from, not a hidden intermediate.
+`run_manifest.json` includes `status`, connector warnings, and a compact quality summary. `evidence.jsonl` is the source trace an LLM should cite from, not a hidden intermediate; each row includes `quality_score`, `quality_tier`, duplicate metadata, and quality reasons. `evidence_quality.json` contains duplicate clusters, source-tier counts, and directional conflict flags that should be reviewed before final synthesis.
 
 ## Roadmap
 
@@ -100,4 +102,5 @@ Each run writes:
 - Add optional logged-in browser collectors as external connectors, not core assumptions.
 - Add an Agent Reach bridge as an optional upstream capability layer, not a runtime dependency: Agent Reach can discover/deep-crawl sources, then pass normalized rows into this engine for traceable artifact writing and deterministic synthesis.
 - Add pack schema validation and examples for more domains.
+- Expand quality scoring with source registries, citation graph checks, and pack-specific contradiction rules.
 - Add async connector execution and retry/caching policies after the synchronous API is stable.
