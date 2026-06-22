@@ -199,3 +199,46 @@ def test_runner_accepts_connector_instances(tmp_path):
 
     assert result.status == "complete"
     assert result.raw_rows == 1
+
+
+def test_cli_imports_external_evidence_jsonl(tmp_path, capsys):
+    evidence_path = tmp_path / "external.jsonl"
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "title": "Lenny memory discussion",
+                "url": "https://www.lennysnewsletter.com/p/memory",
+                "text": "Subscriber-visible notes say HBM supply remains tight.",
+                "metadata": {"platform": "lenny"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "run",
+            "restaurant lease negotiation",
+            "--pack",
+            "auto",
+            "--output",
+            str(tmp_path / "runs"),
+            "--external-evidence",
+            str(evidence_path),
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    run_dir = tmp_path / "runs" / payload["run_id"]
+
+    assert exit_code == 0
+    assert payload["status"] == "complete"
+    assert payload["raw_rows"] == 1
+    query_plan = json.loads((run_dir / "query_plan.json").read_text())
+    execution = json.loads((run_dir / "collection_execution.json").read_text())
+    row = json.loads((run_dir / "evidence.jsonl").read_text().splitlines()[0])
+    assert query_plan["collection_modes"]["external_evidence"] is True
+    assert execution["status_counts"] == {"ok": 1}
+    assert row["connector"] == "external_jsonl"
+    assert row["quality_tier"] in {"medium", "high"}

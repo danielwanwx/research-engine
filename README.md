@@ -16,6 +16,7 @@ python -m pip install .
 research-engine run "research AI agent coding tools" --pack auto --dry-run --output runs
 research-engine run "research DRAM HBM supply shortage" --pack auto --output runs
 research-engine run "research DRAM HBM supply shortage" --pack auto --output runs --max-workers 4 --retries 1
+research-engine run "research Lenny memory discussion" --external-evidence exports/lenny.jsonl --output runs
 ```
 
 The module entrypoint works the same way:
@@ -61,6 +62,7 @@ The runner uses the highest-scoring pack unless `--pack <id>` is supplied. Use `
 Connectors implement a small `collect(CollectionRequest) -> CollectionResult` interface. The scaffold includes:
 
 - `manual` for local or pack-provided rows.
+- `external_jsonl` for authorized evidence exported by logged-in browser tools, Agent Reach, or proprietary collectors.
 - `web_page` for public page text extraction.
 - `finance_quote` for public quote snapshots.
 
@@ -100,6 +102,16 @@ Each run writes:
 `run_manifest.json` includes `status`, connector warnings, execution summary, and a compact quality summary. `collection_execution.json` records request-level connector status, attempts, cache hits, row counts, and warnings. `evidence.jsonl` is the source trace an LLM should cite from, not a hidden intermediate; each row includes `quality_score`, `quality_tier`, duplicate metadata, and quality reasons. `evidence_quality.json` contains duplicate clusters, source-tier counts, and directional conflict flags that should be reviewed before final synthesis.
 
 Connector result caching is opt-in via `--cache-dir`; leave it off when source freshness matters.
+
+## External Evidence
+
+Use `--external-evidence path.jsonl` when evidence comes from a logged-in browser session or another authorized collector. Each JSONL line should be an object with at least:
+
+```json
+{"title": "Source title", "url": "https://example.com", "text": "Visible evidence text", "metadata": {"platform": "lenny"}}
+```
+
+The engine imports these rows through the same execution, quality, and synthesis pipeline as built-in connectors. It does not read cookies, bypass login walls, or control Chrome.
 
 ## Roadmap
 

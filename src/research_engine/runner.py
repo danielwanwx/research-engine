@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from research_engine.artifacts import render_report, slugify, write_json, write_jsonl
-from research_engine.connectors import FinanceQuoteConnector, ManualConnector, WebPageConnector
+from research_engine.connectors import (
+    ExternalJsonlConnector,
+    FinanceQuoteConnector,
+    ManualConnector,
+    WebPageConnector,
+)
 from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
 from research_engine.models import CollectionRequest, CollectionResult, ResearchRunResult, utc_now
 from research_engine.packs import build_pack_queries, pack_summary, select_research_pack
@@ -22,6 +27,7 @@ from research_engine.synthesis import (
 ConnectorProvider = Any | Callable[[], Any]
 
 DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
+    ExternalJsonlConnector.connector_id: ExternalJsonlConnector,
     FinanceQuoteConnector.connector_id: FinanceQuoteConnector,
     ManualConnector.connector_id: ManualConnector,
     WebPageConnector.connector_id: WebPageConnector,
@@ -61,6 +67,7 @@ class ResearchEngine:
         pack_id: str | None = None,
         run_date: str | None = None,
         slug: str | None = None,
+        external_evidence_paths: list[Path] | None = None,
     ) -> ResearchRunResult:
         if depth not in DEPTH_MAX_RESULTS:
             supported = ", ".join(sorted(DEPTH_MAX_RESULTS))
@@ -70,13 +77,21 @@ class ResearchEngine:
         run_id = f"{resolved_date}-{slug or slugify(topic)}"
         run_dir = self.output_dir / run_id
         max_results = DEPTH_MAX_RESULTS[depth]
-        source_requests = build_source_requests(selected_pack, topic=topic)
+        source_requests = build_source_requests(
+            selected_pack,
+            topic=topic,
+            external_evidence_paths=external_evidence_paths,
+        )
         query_plan = {
             "topic": topic,
             "pack": pack_summary(selected_pack),
             "depth": depth,
             "max_results_per_source": max_results,
             "queries": build_pack_queries(topic, selected_pack),
+            "collection_modes": {
+                "external_evidence": bool(external_evidence_paths),
+            },
+            "external_evidence_paths": [str(path) for path in external_evidence_paths or []],
             "sources": [
                 {
                     "source_id": request.source_id,
@@ -185,7 +200,12 @@ def run_research(topic: str, **kwargs: Any) -> ResearchRunResult:
     return ResearchEngine(**kwargs.pop("engine_kwargs", {})).run(topic, **kwargs)
 
 
-def build_source_requests(pack: dict[str, Any], *, topic: str) -> list[CollectionRequest]:
+def build_source_requests(
+    pack: dict[str, Any],
+    *,
+    topic: str,
+    external_evidence_paths: list[Path] | None = None,
+) -> list[CollectionRequest]:
     sources: list[dict[str, Any]] = []
     for source in pack.get("sources") or []:
         if isinstance(source, dict):
@@ -204,6 +224,16 @@ def build_source_requests(pack: dict[str, Any], *, topic: str) -> list[Collectio
                 "source_id": "web_seed_pages",
                 "connector": "web_page",
                 "pages": pack.get("web_pages") or [],
+            }
+        )
+    if external_evidence_paths:
+        sources.append(
+            {
+                "source_id": "external_evidence_jsonl",
+                "connector": "external_jsonl",
+                "paths": [str(path) for path in external_evidence_paths],
+                "source_kind": "external_logged_in_evidence",
+                "access_mode": "external_authorized_capture",
             }
         )
     return [

@@ -25,6 +25,13 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--pack-dir", type=Path, help="Directory containing JSON research packs.")
     parser.add_argument("--output", type=Path, default=Path("runs"), help="Output directory.")
     parser.add_argument("--dry-run", action="store_true", help="Write plan artifacts without collection.")
+    parser.add_argument(
+        "--external-evidence",
+        action="append",
+        type=Path,
+        default=[],
+        help="Import external evidence JSONL rows, e.g. exported logged-in browser captures.",
+    )
     parser.add_argument("--max-workers", type=int, default=4, help="Maximum concurrent connector requests.")
     parser.add_argument("--retries", type=int, default=1, help="Retry count for failed connector requests.")
     parser.add_argument("--cache-dir", type=Path, help="Optional connector-result cache directory.")
@@ -54,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
         depth=args.depth,
         dry_run=args.dry_run,
         pack_id=pack_id,
+        external_evidence_paths=args.external_evidence,
     )
     print(json.dumps(result.as_dict(), ensure_ascii=False, indent=2))
     return 0
