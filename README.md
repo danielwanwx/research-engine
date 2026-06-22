@@ -15,6 +15,7 @@ python -m pip install .
 ```bash
 research-engine run "research AI agent coding tools" --pack auto --dry-run --output runs
 research-engine run "research DRAM HBM supply shortage" --pack auto --output runs
+research-engine run "research DRAM HBM supply shortage" --pack auto --output runs --max-workers 4 --retries 1
 ```
 
 The module entrypoint works the same way:
@@ -38,7 +39,8 @@ The built-in connectors use public endpoints and static page fetches. They do no
 
 - **Research packs**: topic profiles with match terms, query templates, source hints, claim specs, and matrix nodes.
 - **Connectors**: source-specific collectors that return normalized evidence rows.
-- **Runner**: chooses a pack, builds a query plan, runs connectors, writes artifacts.
+- **Execution**: runs connector requests with bounded concurrency, retry telemetry, and optional result caching.
+- **Runner**: chooses a pack, builds a query plan, delegates collection to the execution layer, writes artifacts.
 - **Evidence quality**: deterministic source scoring, duplicate detection, and directional conflict flags written before synthesis.
 - **Synthesis**: deterministic scoring over collected evidence; LLM analysis happens after the traceable evidence pack exists.
 
@@ -87,6 +89,7 @@ Each run writes:
 
 - `run_manifest.json`
 - `query_plan.json`
+- `collection_execution.json`
 - `evidence.jsonl`
 - `evidence_quality.json`
 - `claim_review.json`
@@ -94,7 +97,9 @@ Each run writes:
 - `decision_brief.json`
 - `research_report.md`
 
-`run_manifest.json` includes `status`, connector warnings, and a compact quality summary. `evidence.jsonl` is the source trace an LLM should cite from, not a hidden intermediate; each row includes `quality_score`, `quality_tier`, duplicate metadata, and quality reasons. `evidence_quality.json` contains duplicate clusters, source-tier counts, and directional conflict flags that should be reviewed before final synthesis.
+`run_manifest.json` includes `status`, connector warnings, execution summary, and a compact quality summary. `collection_execution.json` records request-level connector status, attempts, cache hits, row counts, and warnings. `evidence.jsonl` is the source trace an LLM should cite from, not a hidden intermediate; each row includes `quality_score`, `quality_tier`, duplicate metadata, and quality reasons. `evidence_quality.json` contains duplicate clusters, source-tier counts, and directional conflict flags that should be reviewed before final synthesis.
+
+Connector result caching is opt-in via `--cache-dir`; leave it off when source freshness matters.
 
 ## Roadmap
 

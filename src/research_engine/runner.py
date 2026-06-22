@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from research_engine.artifacts import render_report, slugify, write_json, write_jsonl
 from research_engine.connectors import FinanceQuoteConnector, ManualConnector, WebPageConnector
+from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
 from research_engine.models import CollectionRequest, CollectionResult, ResearchRunResult, utc_now
 from research_engine.packs import build_pack_queries, pack_summary, select_research_pack
 from research_engine.quality import enrich_rows_with_quality
@@ -36,10 +37,20 @@ class ResearchEngine:
         pack_dir: Path | None = None,
         output_dir: Path | None = None,
         connectors: dict[str, ConnectorProvider] | None = None,
+        max_workers: int = 4,
+        retries: int = 1,
+        cache_dir: Path | None = None,
+        source_timeout_seconds: float | None = None,
     ) -> None:
         self.pack_dir = pack_dir
         self.output_dir = output_dir or Path("runs")
         self.connector_factories = {**DEFAULT_CONNECTORS, **(connectors or {})}
+        self.execution_options = ConnectorExecutionOptions(
+            max_workers=max_workers,
+            retries=retries,
+            cache_dir=cache_dir,
+            source_timeout_seconds=source_timeout_seconds,
+        )
 
     def run(
         self,
@@ -76,31 +87,35 @@ class ResearchEngine:
         }
         collection_results: list[CollectionResult] = []
         warnings: list[str] = []
+        execution_report = {
+            "generated_at": utc_now(),
+            "max_workers": self.execution_options.max_workers,
+            "retries": self.execution_options.retries,
+            "cache_enabled": self.execution_options.cache_dir is not None,
+            "source_timeout_seconds": self.execution_options.source_timeout_seconds,
+            "request_count": 0,
+            "status_counts": {},
+            "requests": [],
+        }
         if not dry_run and not source_requests:
             warnings.append(f"research pack {selected_pack.get('id')} has no executable sources")
         if not dry_run:
-            for source in source_requests:
-                connector_id = str(source.source.get("connector") or "")
-                provider = self.connector_factories.get(connector_id)
-                if not provider:
-                    warnings.append(f"no connector registered for {connector_id}")
-                    continue
-                connector = provider() if callable(provider) else provider
-                try:
-                    result = connector.collect(
-                        CollectionRequest(
-                            source=source.source,
-                            topic=topic,
-                            run_date=resolved_date,
-                            depth=depth,
-                            max_results=max_results,
-                        )
-                    )
-                except Exception as exc:
-                    warnings.append(f"{connector_id} connector crashed for {source.source_id}: {exc}")
-                    continue
-                collection_results.append(result)
-                warnings.extend(result.warnings)
+            executable_requests = [
+                CollectionRequest(
+                    source=source.source,
+                    topic=topic,
+                    run_date=resolved_date,
+                    depth=depth,
+                    max_results=max_results,
+                )
+                for source in source_requests
+            ]
+            collection_results, execution_warnings, execution_report = execute_collection_requests(
+                executable_requests,
+                connector_providers=self.connector_factories,
+                options=self.execution_options,
+            )
+            warnings.extend(execution_warnings)
         rows = normalize_rows(collection_results)
         rows, quality_report = enrich_rows_with_quality(rows, topic=topic, pack=selected_pack)
         claim_review = build_claim_review(
@@ -124,6 +139,11 @@ class ResearchEngine:
             "status": status,
             "pack": pack_summary(selected_pack),
             "warnings": warnings,
+            "execution_summary": {
+                "request_count": execution_report.get("request_count", 0),
+                "status_counts": execution_report.get("status_counts") or {},
+                "cache_enabled": bool(execution_report.get("cache_enabled")),
+            },
             "quality_summary": {
                 "average_quality_score": quality_report.get("average_quality_score"),
                 "duplicate_cluster_count": quality_report.get("duplicate_cluster_count"),
@@ -132,6 +152,7 @@ class ResearchEngine:
         }
         write_json(run_dir / "run_manifest.json", manifest)
         write_json(run_dir / "query_plan.json", query_plan)
+        write_json(run_dir / "collection_execution.json", execution_report)
         write_jsonl(run_dir / "evidence.jsonl", rows)
         write_json(run_dir / "evidence_quality.json", quality_report)
         write_json(run_dir / "claim_review.json", claim_review)
