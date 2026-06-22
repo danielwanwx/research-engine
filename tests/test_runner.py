@@ -68,6 +68,28 @@ class StatefulManualConnector:
         )
 
 
+class FakeAgentReachConnector:
+    connector_id = "agent_reach_bridge"
+
+    def collect(self, request):
+        return CollectionResult(
+            source_id=request.source_id,
+            connector=self.connector_id,
+            rows=[
+                {
+                    "source_id": request.source_id,
+                    "connector": self.connector_id,
+                    "platform": "reddit",
+                    "title": "Forum memory cycle check",
+                    "url": "https://www.reddit.com/r/stocks/comments/example",
+                    "text": "Forum discussion says HBM tight supply remains a concern.",
+                    "source_kind": "agent_reach_result",
+                    "access_mode": "agent_reach_upstream_cli",
+                }
+            ],
+        )
+
+
 def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     engine = ResearchEngine(output_dir=tmp_path)
 
@@ -82,7 +104,11 @@ def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     assert result.pack_id == "memory_cycle"
     assert result.raw_rows == 0
     assert json.loads((run_dir / "run_manifest.json").read_text())["status"] == "planned"
-    assert json.loads((run_dir / "query_plan.json").read_text())["pack"]["id"] == "memory_cycle"
+    query_plan = json.loads((run_dir / "query_plan.json").read_text())
+    assert query_plan["pack"]["id"] == "memory_cycle"
+    assert {"x", "reddit", "github"}.issubset(
+        {row["platform"] for row in query_plan["platform_research_plan"]}
+    )
 
 
 def test_runner_marks_non_dry_run_without_sources_as_failed_no_sources(tmp_path):
@@ -201,6 +227,37 @@ def test_runner_accepts_connector_instances(tmp_path):
     assert result.raw_rows == 1
 
 
+def test_runner_collects_agent_reach_bridge_with_injected_connector(tmp_path):
+    engine = ResearchEngine(
+        output_dir=tmp_path,
+        connectors={"agent_reach_bridge": FakeAgentReachConnector},
+    )
+
+    result = engine.run(
+        "restaurant lease negotiation",
+        run_date="2026-06-21",
+        slug="agent-reach",
+        agent_reach=True,
+        platform_scope="deep",
+        agent_reach_command_templates=['fake-search "{query}" --platform {platform}'],
+    )
+
+    run_dir = tmp_path / "2026-06-21-agent-reach"
+    query_plan = json.loads((run_dir / "query_plan.json").read_text())
+    execution = json.loads((run_dir / "collection_execution.json").read_text())
+    row = json.loads((run_dir / "evidence.jsonl").read_text().splitlines()[0])
+
+    assert result.status == "complete"
+    assert result.raw_rows == 1
+    assert query_plan["platform_scope"] == "deep"
+    assert query_plan["collection_modes"]["agent_reach"] is True
+    assert query_plan["agent_reach_commands"] == ['fake-search "{query}" --platform {platform}']
+    assert "agent_reach_bridge" in {source["source_id"] for source in query_plan["sources"]}
+    assert execution["status_counts"] == {"ok": 1}
+    assert row["connector"] == "agent_reach_bridge"
+    assert row["quality_tier"] in {"medium", "high"}
+
+
 def test_cli_imports_external_evidence_jsonl(tmp_path, capsys):
     evidence_path = tmp_path / "external.jsonl"
     evidence_path.write_text(
@@ -242,3 +299,30 @@ def test_cli_imports_external_evidence_jsonl(tmp_path, capsys):
     assert execution["status_counts"] == {"ok": 1}
     assert row["connector"] == "external_jsonl"
     assert row["quality_tier"] in {"medium", "high"}
+
+
+def test_cli_dry_run_records_platform_scope_and_agent_reach(tmp_path, capsys):
+    exit_code = main(
+        [
+            "run",
+            "cross platform forum research",
+            "--output",
+            str(tmp_path / "runs"),
+            "--dry-run",
+            "--platform-scope",
+            "all",
+            "--agent-reach",
+            "--agent-reach-command",
+            'fake-search "{query}" --platform {platform}',
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    query_plan = json.loads((tmp_path / "runs" / payload["run_id"] / "query_plan.json").read_text())
+    platforms = {row["platform"] for row in query_plan["platform_research_plan"]}
+
+    assert exit_code == 0
+    assert query_plan["platform_scope"] == "all"
+    assert query_plan["collection_modes"]["agent_reach"] is True
+    assert query_plan["agent_reach_commands"] == ['fake-search "{query}" --platform {platform}']
+    assert {"x", "reddit", "bilibili", "xueqiu"}.issubset(platforms)

@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from research_engine.artifacts import render_report, slugify, write_json, write_jsonl
 from research_engine.connectors import (
+    AgentReachBridgeConnector,
     ExternalJsonlConnector,
     FinanceQuoteConnector,
     ManualConnector,
@@ -16,6 +17,7 @@ from research_engine.connectors import (
 from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
 from research_engine.models import CollectionRequest, CollectionResult, ResearchRunResult, utc_now
 from research_engine.packs import build_pack_queries, pack_summary, select_research_pack
+from research_engine.platforms import build_platform_research_plan
 from research_engine.quality import enrich_rows_with_quality
 from research_engine.synthesis import (
     build_claim_review,
@@ -27,6 +29,7 @@ from research_engine.synthesis import (
 ConnectorProvider = Any | Callable[[], Any]
 
 DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
+    AgentReachBridgeConnector.connector_id: AgentReachBridgeConnector,
     ExternalJsonlConnector.connector_id: ExternalJsonlConnector,
     FinanceQuoteConnector.connector_id: FinanceQuoteConnector,
     ManualConnector.connector_id: ManualConnector,
@@ -68,6 +71,9 @@ class ResearchEngine:
         run_date: str | None = None,
         slug: str | None = None,
         external_evidence_paths: list[Path] | None = None,
+        platform_scope: str = "broad",
+        agent_reach: bool = False,
+        agent_reach_command_templates: list[str] | None = None,
     ) -> ResearchRunResult:
         if depth not in DEPTH_MAX_RESULTS:
             supported = ", ".join(sorted(DEPTH_MAX_RESULTS))
@@ -77,20 +83,32 @@ class ResearchEngine:
         run_id = f"{resolved_date}-{slug or slugify(topic)}"
         run_dir = self.output_dir / run_id
         max_results = DEPTH_MAX_RESULTS[depth]
+        platform_plan = build_platform_research_plan(
+            topic,
+            scope=platform_scope,
+            pack=selected_pack,
+        )
         source_requests = build_source_requests(
             selected_pack,
             topic=topic,
             external_evidence_paths=external_evidence_paths,
+            platform_plan=platform_plan,
+            agent_reach=agent_reach,
+            agent_reach_command_templates=agent_reach_command_templates,
         )
         query_plan = {
             "topic": topic,
             "pack": pack_summary(selected_pack),
             "depth": depth,
             "max_results_per_source": max_results,
+            "platform_scope": platform_scope,
+            "platform_research_plan": platform_plan,
             "queries": build_pack_queries(topic, selected_pack),
             "collection_modes": {
                 "external_evidence": bool(external_evidence_paths),
+                "agent_reach": agent_reach,
             },
+            "agent_reach_commands": list(agent_reach_command_templates or []),
             "external_evidence_paths": [str(path) for path in external_evidence_paths or []],
             "sources": [
                 {
@@ -205,6 +223,9 @@ def build_source_requests(
     *,
     topic: str,
     external_evidence_paths: list[Path] | None = None,
+    platform_plan: list[dict[str, Any]] | None = None,
+    agent_reach: bool = False,
+    agent_reach_command_templates: list[str] | None = None,
 ) -> list[CollectionRequest]:
     sources: list[dict[str, Any]] = []
     for source in pack.get("sources") or []:
@@ -236,6 +257,14 @@ def build_source_requests(
                 "access_mode": "external_authorized_capture",
             }
         )
+    if agent_reach:
+        sources.append(
+            build_agent_reach_bridge_source(
+                topic=topic,
+                platform_plan=platform_plan or [],
+                command_templates=agent_reach_command_templates,
+            )
+        )
     return [
         CollectionRequest(
             source=source,
@@ -246,6 +275,33 @@ def build_source_requests(
         )
         for source in sources
     ]
+
+
+def build_agent_reach_bridge_source(
+    *,
+    topic: str,
+    platform_plan: list[dict[str, Any]],
+    command_templates: list[str] | None,
+) -> dict[str, Any]:
+    platform_queries = {
+        str(row.get("platform")): str(row.get("query") or topic)
+        for row in platform_plan
+        if row.get("platform")
+    }
+    if not platform_queries:
+        platform_queries = {platform: topic for platform in ("x", "reddit", "github", "youtube")}
+    return {
+        "source_id": "agent_reach_bridge",
+        "connector": "agent_reach_bridge",
+        "query_strategy": {
+            "query": topic,
+            "platforms": list(platform_queries),
+            "platform_queries": platform_queries,
+            "command_templates": list(command_templates or []),
+        },
+        "source_kind": "agent_reach_bridge",
+        "access_mode": "agent_reach_or_upstream_cli",
+    }
 
 
 def normalize_rows(results: list[CollectionResult]) -> list[dict[str, Any]]:
