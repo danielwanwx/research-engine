@@ -1,7 +1,9 @@
 import subprocess
 
 from research_engine.connectors.agent_reach import (
+    DEFAULT_PLATFORM_COMMAND_TEMPLATES,
     AgentReachBridgeConnector,
+    build_command_specs,
     render_command_template,
 )
 from research_engine.models import CollectionRequest
@@ -23,6 +25,37 @@ def test_render_command_template_keeps_query_together():
         "--limit",
         "3",
     ]
+
+
+def test_default_platform_command_templates_are_renderable():
+    for platform, templates in DEFAULT_PLATFORM_COMMAND_TEMPLATES.items():
+        assert isinstance(templates, tuple)
+        for template in templates:
+            command = render_command_template(
+                template,
+                platform=platform,
+                query="#loop engineering",
+                max_results=3,
+            )
+            assert command
+
+
+def test_build_command_specs_handles_hashtag_queries_without_crashing():
+    commands = build_command_specs(
+        platforms=["x", "reddit", "github", "youtube"],
+        query="#loop engineering",
+        platform_queries={
+            "x": "#loop engineering discussion thread",
+            "reddit": "#loop engineering site:reddit.com discussion",
+            "github": "#loop engineering github open source",
+            "youtube": "#loop engineering youtube interview",
+        },
+        templates=[],
+        max_results=3,
+    )
+
+    assert len(commands) == 4
+    assert any(command["command"][0] == "gh" for command in commands)
 
 
 def test_agent_reach_bridge_parses_json_output():

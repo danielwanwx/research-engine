@@ -23,7 +23,7 @@ DEFAULT_PLATFORM_COMMAND_TEMPLATES: dict[str, tuple[str, ...]] = {
     "reddit": ('rdt search "{query}" -n {max_results}',),
     "github": (
         'gh search repos "{query}" --limit {max_results} '
-        "--json fullName,url,description,stargazersCount,updatedAt"
+        "--json fullName,url,description,stargazersCount,updatedAt",
     ),
     "youtube": ('yt-dlp "ytsearch{max_results}:{query}" --dump-json --no-playlist',),
 }
