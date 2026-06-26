@@ -7,14 +7,20 @@ import json
 from pathlib import Path
 import sys
 
+from research_engine.doctor import render_doctor_text, run_doctor
 from research_engine.runner import ResearchEngine
 
 
+COMMANDS = {"run", "doctor"}
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run pack-driven research collection.")
+    parser = argparse.ArgumentParser(description="Run evidence-first research collection.")
     subparsers = parser.add_subparsers(dest="command")
     run_parser = subparsers.add_parser("run", help="Run a research collection.")
     add_run_arguments(run_parser)
+    doctor_parser = subparsers.add_parser("doctor", help="Check local Research Engine capabilities.")
+    add_doctor_arguments(doctor_parser)
     return parser
 
 
@@ -62,11 +68,45 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_doctor_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "target",
+        nargs="?",
+        choices=["all", "agentreach", "opencli", "chrome"],
+        default="all",
+        help="Capability group to check.",
+    )
+    parser.add_argument(
+        "--state-dir",
+        type=Path,
+        default=Path("state"),
+        help="Directory for capability artifacts.",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format for stdout.",
+    )
+    parser.add_argument(
+        "--no-write",
+        action="store_true",
+        help="Do not write state/connector_capabilities.json.",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
-    if raw_args and raw_args[0] != "run" and not raw_args[0].startswith("-"):
+    if raw_args and raw_args[0] not in COMMANDS and not raw_args[0].startswith("-"):
         raw_args.insert(0, "run")
     args = build_parser().parse_args(raw_args)
+    if args.command == "doctor":
+        report = run_doctor(target=args.target, state_dir=args.state_dir, write=not args.no_write)
+        if args.format == "json":
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        else:
+            print(render_doctor_text(report), end="")
+        return 1 if report.get("status") == "failed" else 0
     pack_id = None if args.pack_id in {None, "", "auto"} else args.pack_id
     engine = ResearchEngine(
         pack_dir=args.pack_dir,

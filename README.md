@@ -1,15 +1,27 @@
 # Research Engine
 
-Pack-driven research orchestration for collecting evidence, preserving source traces, and producing deterministic synthesis artifacts.
+Evidence-first research loops for AI agents.
 
-This project is the standalone/open-source direction for the Research Engine. It is intentionally stdlib-first: packs are JSON files, connectors are small Python classes, and the runner writes transparent artifacts that an LLM can consume afterward.
+Research Engine turns heterogeneous evidence from web pages, browser sessions, CLI tools, APIs, and manual captures into auditable research artifacts that agents and LLMs can analyze, verify, and improve over time.
+
+It is intentionally stdlib-first: packs are JSON files, connectors are small Python classes, and the runner writes transparent artifacts before an LLM consumes anything.
+
+## What Makes It Different
+
+Research Engine is not just another crawler.
+
+- **AgentReach** installs and exposes upstream platform CLIs.
+- **OpenCLI** turns websites and browser workflows into CLI-accessible capabilities.
+- **Research Engine** orchestrates research intent, evidence normalization, source quality scoring, contradiction checks, synthesis artifacts, and loop memory.
+
+AgentReach and OpenCLI are useful upstream capability providers. They should feed Research Engine; they are not required runtime dependencies for the core package.
 
 ## Quick Start
 
 Requires Python 3.10 or newer.
 
 ```bash
-python -m pip install .
+python -m pip install -e '.[dev]'
 ```
 
 ```bash
@@ -30,6 +42,22 @@ For local development:
 ```bash
 python -m pytest -q
 python -m ruff check src tests
+```
+
+Or use the Makefile:
+
+```bash
+make test
+make lint
+make check
+```
+
+Check optional local capabilities:
+
+```bash
+research-engine doctor
+research-engine doctor agentreach
+research-engine doctor opencli --format json
 ```
 
 ## Data Source Limits
@@ -65,8 +93,11 @@ Connectors implement a small `collect(CollectionRequest) -> CollectionResult` in
 - `external_jsonl` for authorized evidence exported by logged-in browser tools, Agent Reach, or proprietary collectors.
 - `web_page` for public page text extraction.
 - `finance_quote` for public quote snapshots.
+- `agent_reach_bridge` for optional AgentReach/upstream CLI results.
 
 Additional platform integrations should live behind this same connector interface so the core runner remains source-agnostic.
+
+See `docs/connector-support.md` for the current support matrix and planned connectors.
 
 Minimal connector example:
 
@@ -117,7 +148,10 @@ The engine imports these rows through the same execution, quality, and synthesis
 
 - Add richer local-file/manual evidence import from CLI.
 - Add optional logged-in browser collectors as external connectors, not core assumptions.
-- Add an Agent Reach bridge as an optional upstream capability layer, not a runtime dependency: Agent Reach can discover/deep-crawl sources, then pass normalized rows into this engine for traceable artifact writing and deterministic synthesis.
+- Expand the AgentReach bridge as an optional upstream capability layer, not a runtime dependency.
+- Add an OpenCLI bridge for authorized browser workflows and no-API websites.
+- Add a deeper web crawler connector for sitemap, bounded crawl, and optional Playwright rendering.
+- Add loop runtime, reflection, persistent memory, and deterministic evals.
 - Add pack schema validation and examples for more domains.
 - Expand quality scoring with source registries, citation graph checks, and pack-specific contradiction rules.
 - Add async connector execution and retry/caching policies after the synchronous API is stable.
