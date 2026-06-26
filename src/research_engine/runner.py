@@ -12,6 +12,7 @@ from research_engine.connectors import (
     ExternalJsonlConnector,
     FinanceQuoteConnector,
     ManualConnector,
+    OpenCliBridgeConnector,
     WebPageConnector,
 )
 from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
@@ -19,6 +20,7 @@ from research_engine.models import CollectionRequest, CollectionResult, Research
 from research_engine.packs import build_pack_queries, pack_summary, select_research_pack
 from research_engine.platforms import build_platform_research_plan
 from research_engine.quality import enrich_rows_with_quality
+from research_engine.security import artifact_path_ref, redact_text
 from research_engine.synthesis import (
     build_claim_review,
     build_decision_brief,
@@ -33,6 +35,7 @@ DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
     ExternalJsonlConnector.connector_id: ExternalJsonlConnector,
     FinanceQuoteConnector.connector_id: FinanceQuoteConnector,
     ManualConnector.connector_id: ManualConnector,
+    OpenCliBridgeConnector.connector_id: OpenCliBridgeConnector,
     WebPageConnector.connector_id: WebPageConnector,
 }
 
@@ -107,9 +110,16 @@ class ResearchEngine:
             "collection_modes": {
                 "external_evidence": bool(external_evidence_paths),
                 "agent_reach": agent_reach,
+                "opencli": any(
+                    request.source.get("connector") == "opencli_bridge"
+                    for request in source_requests
+                ),
             },
-            "agent_reach_commands": list(agent_reach_command_templates or []),
-            "external_evidence_paths": [str(path) for path in external_evidence_paths or []],
+            "agent_reach_commands": [
+                redact_text(template)
+                for template in agent_reach_command_templates or []
+            ],
+            "external_evidence_paths": [artifact_path_ref(path) for path in external_evidence_paths or []],
             "sources": [
                 {
                     "source_id": request.source_id,

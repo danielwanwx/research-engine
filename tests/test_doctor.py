@@ -34,6 +34,7 @@ def test_check_command_reads_version_from_available_tool():
         "opencli",
         label="OpenCLI",
         group="opencli",
+        connector_ids=("opencli_bridge",),
         version_args=("--version",),
         runner=fake_runner,
         which=lambda command: "/usr/local/bin/opencli",
@@ -42,6 +43,7 @@ def test_check_command_reads_version_from_available_tool():
     assert check.available is True
     assert check.path == "/usr/local/bin/opencli"
     assert check.version == "opencli 1.2.3"
+    assert check.metadata["connector_ids"] == ["opencli_bridge"]
 
 
 def test_cli_doctor_outputs_json_and_writes_state(tmp_path, capsys):

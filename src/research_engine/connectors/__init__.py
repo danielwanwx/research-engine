@@ -5,6 +5,7 @@ from .base import Connector
 from .external import ExternalJsonlConnector
 from .finance import FinanceQuoteConnector
 from .manual import ManualConnector
+from .opencli import OpenCliBridgeConnector
 from .web import WebPageConnector
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "ExternalJsonlConnector",
     "FinanceQuoteConnector",
     "ManualConnector",
+    "OpenCliBridgeConnector",
     "WebPageConnector",
 ]

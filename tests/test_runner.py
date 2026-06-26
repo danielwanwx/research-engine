@@ -90,6 +90,28 @@ class FakeAgentReachConnector:
         )
 
 
+class FakeOpenCliConnector:
+    connector_id = "opencli_bridge"
+
+    def collect(self, request):
+        return CollectionResult(
+            source_id=request.source_id,
+            connector=self.connector_id,
+            rows=[
+                {
+                    "source_id": request.source_id,
+                    "connector": self.connector_id,
+                    "platform": "x",
+                    "title": "Loop engineering seed",
+                    "url": "https://x.com/example/status/1",
+                    "text": "Harness layer and verifier loop discussion.",
+                    "source_kind": "opencli_result",
+                    "access_mode": "opencli_upstream_cli",
+                }
+            ],
+        )
+
+
 def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     engine = ResearchEngine(output_dir=tmp_path)
 
@@ -258,6 +280,46 @@ def test_runner_collects_agent_reach_bridge_with_injected_connector(tmp_path):
     assert row["quality_tier"] in {"medium", "high"}
 
 
+def test_runner_collects_opencli_bridge_from_pack_source(tmp_path):
+    pack_dir = tmp_path / "packs"
+    pack_dir.mkdir()
+    (pack_dir / "generic.json").write_text(
+        json.dumps(
+            {
+                "id": "generic",
+                "label": "Generic",
+                "sources": [
+                    {
+                        "source_id": "opencli_loop_seed",
+                        "connector": "opencli_bridge",
+                        "platform": "x",
+                        "query": "loop engineering",
+                        "command": 'opencli x search --query "{query}" --format json',
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = ResearchEngine(
+        output_dir=tmp_path / "runs",
+        pack_dir=pack_dir,
+        connectors={"opencli_bridge": FakeOpenCliConnector},
+    )
+
+    result = engine.run("loop engineering", run_date="2026-06-26", slug="opencli")
+
+    run_dir = tmp_path / "runs/2026-06-26-opencli"
+    query_plan = json.loads((run_dir / "query_plan.json").read_text())
+    row = json.loads((run_dir / "evidence.jsonl").read_text().splitlines()[0])
+
+    assert result.status == "complete"
+    assert query_plan["collection_modes"]["opencli"] is True
+    assert query_plan["sources"][0]["connector"] == "opencli_bridge"
+    assert row["connector"] == "opencli_bridge"
+    assert row["platform"] == "x"
+
+
 def test_cli_imports_external_evidence_jsonl(tmp_path, capsys):
     evidence_path = tmp_path / "external.jsonl"
     evidence_path.write_text(
@@ -296,9 +358,94 @@ def test_cli_imports_external_evidence_jsonl(tmp_path, capsys):
     execution = json.loads((run_dir / "collection_execution.json").read_text())
     row = json.loads((run_dir / "evidence.jsonl").read_text().splitlines()[0])
     assert query_plan["collection_modes"]["external_evidence"] is True
+    assert query_plan["external_evidence_paths"][0]["name"] == "external.jsonl"
+    assert "path_hash" in query_plan["external_evidence_paths"][0]
     assert execution["status_counts"] == {"ok": 1}
     assert row["connector"] == "external_jsonl"
     assert row["quality_tier"] in {"medium", "high"}
+
+
+def test_cli_external_evidence_redacts_secrets_from_artifacts(tmp_path, capsys):
+    evidence_path = tmp_path / "external.jsonl"
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "title": "Visible source",
+                "url": "https://example.com/source",
+                "text": "Visible evidence token=artifact-secret-token",
+                "cookie": "artifact-secret-cookie",
+                "metadata": {"platform": "x", "authorization": "Bearer artifact-secret-token"},
+                "metrics": {"views": 10, "api_key": "artifact-secret-key"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "run",
+            "artifact redaction check",
+            "--pack",
+            "auto",
+            "--output",
+            str(tmp_path / "runs"),
+            "--external-evidence",
+            str(evidence_path),
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    run_dir = tmp_path / "runs" / payload["run_id"]
+    artifact_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            run_dir / "run_manifest.json",
+            run_dir / "query_plan.json",
+            run_dir / "collection_execution.json",
+            run_dir / "evidence.jsonl",
+            run_dir / "research_report.md",
+        )
+    )
+
+    assert exit_code == 0
+    assert "artifact-secret-token" not in artifact_text
+    assert "artifact-secret-cookie" not in artifact_text
+    assert "artifact-secret-key" not in artifact_text
+    assert str(evidence_path.parent) not in artifact_text
+
+
+def test_cli_external_evidence_directory_warning_does_not_leak_full_path(tmp_path, capsys):
+    evidence_path = tmp_path / "external_dir.jsonl"
+    evidence_path.mkdir()
+
+    exit_code = main(
+        [
+            "run",
+            "external evidence path leak",
+            "--pack",
+            "auto",
+            "--output",
+            str(tmp_path / "runs"),
+            "--external-evidence",
+            str(evidence_path),
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    run_dir = tmp_path / "runs" / payload["run_id"]
+    artifact_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            run_dir / "run_manifest.json",
+            run_dir / "collection_execution.json",
+            run_dir / "research_report.md",
+        )
+    )
+
+    assert exit_code == 0
+    assert payload["status"] == "failed_no_rows"
+    assert "external_dir.jsonl#" in artifact_text
+    assert str(evidence_path.parent) not in artifact_text
+    assert "connector crashed" not in artifact_text
 
 
 def test_cli_dry_run_records_platform_scope_and_agent_reach(tmp_path, capsys):
@@ -326,3 +473,24 @@ def test_cli_dry_run_records_platform_scope_and_agent_reach(tmp_path, capsys):
     assert query_plan["collection_modes"]["agent_reach"] is True
     assert query_plan["agent_reach_commands"] == ['fake-search "{query}" --platform {platform}']
     assert {"x", "reddit", "bilibili", "xueqiu"}.issubset(platforms)
+
+
+def test_cli_dry_run_redacts_agent_reach_command_templates(tmp_path, capsys):
+    exit_code = main(
+        [
+            "run",
+            "command redaction",
+            "--output",
+            str(tmp_path / "runs"),
+            "--dry-run",
+            "--agent-reach",
+            "--agent-reach-command",
+            'fake-search --token dry-run-secret-token "{query}"',
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    query_plan = json.loads((tmp_path / "runs" / payload["run_id"] / "query_plan.json").read_text())
+
+    assert exit_code == 0
+    assert "dry-run-secret-token" not in json.dumps(query_plan)
+    assert query_plan["agent_reach_commands"] == ['fake-search --token [REDACTED] "{query}"']

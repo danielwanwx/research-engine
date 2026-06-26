@@ -38,41 +38,49 @@ COMMAND_CHECKS: dict[str, dict[str, Any]] = {
         "label": "AgentReach installer/status CLI",
         "group": "agentreach",
         "version_args": ("--version",),
+        "connector_ids": ("agent_reach_bridge",),
     },
     "twitter": {
         "label": "AgentReach Twitter/X CLI",
         "group": "agentreach",
         "version_args": ("--version",),
+        "connector_ids": ("agent_reach_bridge",),
     },
     "rdt": {
         "label": "AgentReach Reddit CLI",
         "group": "agentreach",
         "version_args": ("--version",),
+        "connector_ids": ("agent_reach_bridge",),
     },
     "xhs": {
         "label": "AgentReach Xiaohongshu CLI",
         "group": "agentreach",
         "version_args": ("--version",),
+        "connector_ids": ("agent_reach_bridge",),
     },
     "xq": {
         "label": "AgentReach Xueqiu CLI",
         "group": "agentreach",
         "version_args": ("--version",),
+        "connector_ids": ("agent_reach_bridge",),
     },
     "yt-dlp": {
         "label": "YouTube downloader/search CLI",
         "group": "agentreach",
         "version_args": ("--version",),
+        "connector_ids": ("agent_reach_bridge",),
     },
     "gh": {
         "label": "GitHub CLI",
         "group": "agentreach",
         "version_args": ("--version",),
+        "connector_ids": ("agent_reach_bridge",),
     },
     "opencli": {
         "label": "OpenCLI browser workflow CLI",
         "group": "opencli",
         "version_args": ("--version",),
+        "connector_ids": ("opencli_bridge",),
     },
 }
 
@@ -147,6 +155,7 @@ def command_checks_for_target(
                 command,
                 label=str(config["label"]),
                 group=str(config["group"]),
+                connector_ids=tuple(config.get("connector_ids") or ()),
                 version_args=tuple(config.get("version_args") or ()),
                 runner=runner,
                 which=which,
@@ -187,6 +196,7 @@ def check_command(
     *,
     label: str,
     group: str,
+    connector_ids: tuple[str, ...],
     version_args: tuple[str, ...],
     runner: Runner,
     which: Which,
@@ -198,7 +208,12 @@ def check_command(
             label=label,
             available=False,
             warning=f"Command not found on PATH: {command}",
-            metadata={"required": False, "group": group, "command": command},
+            metadata={
+                "required": False,
+                "group": group,
+                "command": command,
+                "connector_ids": list(connector_ids),
+            },
         )
     version = command_version(path, version_args=version_args, runner=runner)
     return CapabilityCheck(
@@ -207,7 +222,12 @@ def check_command(
         available=True,
         version=version,
         path=path,
-        metadata={"required": False, "group": group, "command": command},
+        metadata={
+            "required": False,
+            "group": group,
+            "command": command,
+            "connector_ids": list(connector_ids),
+        },
     )
 
 

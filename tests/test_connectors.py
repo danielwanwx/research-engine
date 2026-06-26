@@ -82,3 +82,152 @@ def test_external_jsonl_connector_imports_logged_in_rows(tmp_path):
     assert result.rows[0]["connector"] == "external_jsonl"
     assert result.rows[0]["platform"] == "lenny"
     assert result.rows[0]["access_mode"] == "external_authorized_capture"
+
+
+def test_external_jsonl_connector_drops_sensitive_fields(tmp_path):
+    evidence_path = tmp_path / "logged_in.jsonl"
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "title": "Visible source",
+                "url": "https://example.com/source",
+                "text": "Visible evidence token=super-secret-token",
+                "cookie": "super-secret-cookie",
+                "metadata": {
+                    "platform": "x",
+                    "authorization": "Bearer super-secret-token",
+                    "source_confidence": "medium",
+                },
+                "metrics": {"views": 10, "api_key": "super-secret-key"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = ExternalJsonlConnector().collect(
+        CollectionRequest(
+            source={
+                "source_id": "external_evidence_jsonl",
+                "paths": [str(evidence_path)],
+            },
+            topic="secret hygiene",
+            run_date="2026-06-26",
+            depth="quick",
+            max_results=3,
+        )
+    )
+    serialized = json.dumps(result.rows[0], ensure_ascii=False)
+
+    assert "super-secret-token" not in serialized
+    assert "super-secret-cookie" not in serialized
+    assert "super-secret-key" not in serialized
+    assert "cookie" not in result.rows[0]
+    assert result.rows[0]["metrics"]["views"] == 10
+    assert result.rows[0]["raw_ref"].startswith("logged_in.jsonl#")
+    assert result.rows[0]["raw_ref"].endswith(":1")
+    assert result.metadata["paths"][0]["name"] == "logged_in.jsonl"
+    assert "path_hash" in result.metadata["paths"][0]
+    assert "dropped sensitive field" in result.warnings[0]
+
+
+def test_external_jsonl_connector_redacts_url_params_and_command_metrics(tmp_path):
+    evidence_path = tmp_path / "logged_in.jsonl"
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "title": "Visible source",
+                "url": "https://example.com/source?access_token=url-secret&sessionid=session-secret&ok=1",
+                "text": "Visible evidence",
+                "metrics": {
+                    "command": ["collector", "--token", "command-secret", "--query", "visible"],
+                    "views": 10,
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = ExternalJsonlConnector().collect(
+        CollectionRequest(
+            source={
+                "source_id": "external_evidence_jsonl",
+                "paths": [str(evidence_path)],
+            },
+            topic="secret hygiene",
+            run_date="2026-06-26",
+            depth="quick",
+            max_results=3,
+        )
+    )
+    serialized = json.dumps(result.rows[0], ensure_ascii=False)
+
+    assert "url-secret" not in serialized
+    assert "session-secret" not in serialized
+    assert "command-secret" not in serialized
+    assert "ok=1" in serialized
+    assert result.rows[0]["metrics"]["command"] == [
+        "collector",
+        "--token",
+        "[REDACTED]",
+        "--query",
+        "visible",
+    ]
+
+
+def test_external_jsonl_connector_directory_warning_does_not_leak_full_path(tmp_path):
+    evidence_path = tmp_path / "evidence_dir.jsonl"
+    evidence_path.mkdir()
+
+    result = ExternalJsonlConnector().collect(
+        CollectionRequest(
+            source={
+                "source_id": "external_evidence_jsonl",
+                "paths": [str(evidence_path)],
+            },
+            topic="path hygiene",
+            run_date="2026-06-26",
+            depth="quick",
+            max_results=3,
+        )
+    )
+    warnings = " ".join(result.warnings)
+
+    assert result.rows == []
+    assert "could not be read" in warnings
+    assert "evidence_dir.jsonl#" in warnings
+    assert str(evidence_path.parent) not in warnings
+
+
+def test_external_jsonl_connector_uses_distinct_hashed_refs_for_same_basename(tmp_path):
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    first_path = first_dir / "logged_in.jsonl"
+    second_path = second_dir / "logged_in.jsonl"
+    payload = {"title": "Visible source", "url": "https://example.com", "text": "Visible evidence"}
+    first_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    second_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    result = ExternalJsonlConnector().collect(
+        CollectionRequest(
+            source={
+                "source_id": "external_evidence_jsonl",
+                "paths": [str(first_path), str(second_path)],
+            },
+            topic="path refs",
+            run_date="2026-06-26",
+            depth="quick",
+            max_results=3,
+        )
+    )
+
+    refs = [row["raw_ref"] for row in result.rows]
+
+    assert refs[0].startswith("logged_in.jsonl#")
+    assert refs[1].startswith("logged_in.jsonl#")
+    assert refs[0] != refs[1]
+    assert str(first_dir) not in json.dumps(result.rows)
+    assert str(second_dir) not in json.dumps(result.rows)

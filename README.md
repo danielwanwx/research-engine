@@ -94,10 +94,23 @@ Connectors implement a small `collect(CollectionRequest) -> CollectionResult` in
 - `web_page` for public page text extraction.
 - `finance_quote` for public quote snapshots.
 - `agent_reach_bridge` for optional AgentReach/upstream CLI results.
+- `opencli_bridge` for optional OpenCLI read-only adapter output.
 
 Additional platform integrations should live behind this same connector interface so the core runner remains source-agnostic.
 
 See `docs/connector-support.md` for the current support matrix and planned connectors.
+
+OpenCLI bridge sources are pack-driven in v1. Example:
+
+```json
+{
+  "source_id": "opencli_x_seed",
+  "connector": "opencli_bridge",
+  "platform": "x",
+  "query": "loop engineering",
+  "command": "opencli x search --query \"{query}\" --limit {max_results} --format json"
+}
+```
 
 Minimal connector example:
 
@@ -143,13 +156,15 @@ Use `--external-evidence path.jsonl` when evidence comes from a logged-in browse
 ```
 
 The engine imports these rows through the same execution, quality, and synthesis pipeline as built-in connectors. It does not read cookies, bypass login walls, or control Chrome.
+Artifact references store only the evidence filename plus a stable path hash; full local paths, cookies, authorization headers, and token-like fields are redacted or dropped before rows are written.
+Optional CLI bridges execute without a shell, enforce allowlisted entrypoints, and reject command terms or flags associated with account mutation or child-command execution.
 
 ## Roadmap
 
 - Add richer local-file/manual evidence import from CLI.
 - Add optional logged-in browser collectors as external connectors, not core assumptions.
 - Expand the AgentReach bridge as an optional upstream capability layer, not a runtime dependency.
-- Add an OpenCLI bridge for authorized browser workflows and no-API websites.
+- Expand the OpenCLI bridge for authorized read-only adapters and no-API websites.
 - Add a deeper web crawler connector for sitemap, bounded crawl, and optional Playwright rendering.
 - Add loop runtime, reflection, persistent memory, and deterministic evals.
 - Add pack schema validation and examples for more domains.

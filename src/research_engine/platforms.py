@@ -151,7 +151,7 @@ PLATFORM_PROFILES: tuple[PlatformProfile, ...] = (
         platform="xueqiu",
         label="Xueqiu",
         category="finance_social",
-        access_mode="logged_in_cookie_or_external",
+        access_mode="authorized_session_or_external",
         preferred_connector="agent_reach_or_external",
         search_url_template="https://xueqiu.com/k?q={query}",
         query_suffixes=("雪球", "投资者讨论"),
