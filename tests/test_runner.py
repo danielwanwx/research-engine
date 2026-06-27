@@ -112,6 +112,28 @@ class FakeOpenCliConnector:
         )
 
 
+class FakeGitHubPublicConnector:
+    connector_id = "github_public_search"
+
+    def collect(self, request):
+        return CollectionResult(
+            source_id=request.source_id,
+            connector=self.connector_id,
+            rows=[
+                {
+                    "source_id": request.source_id,
+                    "connector": self.connector_id,
+                    "platform": "github",
+                    "title": "example/loopx",
+                    "url": "https://github.com/example/loopx",
+                    "text": "Loop engineering for long-running AI agents.",
+                    "source_kind": "github_public_repository",
+                    "access_mode": "public_github_api",
+                }
+            ],
+        )
+
+
 def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     engine = ResearchEngine(output_dir=tmp_path)
 
@@ -318,6 +340,30 @@ def test_runner_collects_opencli_bridge_from_pack_source(tmp_path):
     assert query_plan["sources"][0]["connector"] == "opencli_bridge"
     assert row["connector"] == "opencli_bridge"
     assert row["platform"] == "x"
+
+
+def test_runner_adds_github_public_fallback_from_platform_plan(tmp_path):
+    engine = ResearchEngine(
+        output_dir=tmp_path / "runs",
+        connectors={"github_public_search": FakeGitHubPublicConnector},
+    )
+
+    result = engine.run(
+        "#loop engineering",
+        run_date="2026-06-27",
+        slug="loop-engineering",
+        platform_scope="all",
+    )
+
+    run_dir = tmp_path / "runs/2026-06-27-loop-engineering"
+    query_plan = json.loads((run_dir / "query_plan.json").read_text())
+    row = json.loads((run_dir / "evidence.jsonl").read_text().splitlines()[0])
+
+    assert result.status == "complete"
+    assert query_plan["collection_modes"]["github_public"] is True
+    assert "github_public_search" in {source["source_id"] for source in query_plan["sources"]}
+    assert row["connector"] == "github_public_search"
+    assert row["platform"] == "github"
 
 
 def test_cli_imports_external_evidence_jsonl(tmp_path, capsys):

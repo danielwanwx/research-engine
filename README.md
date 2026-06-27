@@ -93,6 +93,7 @@ Connectors implement a small `collect(CollectionRequest) -> CollectionResult` in
 - `external_jsonl` for authorized evidence exported by logged-in browser tools, Agent Reach, or proprietary collectors.
 - `web_page` for public page text extraction.
 - `finance_quote` for public quote snapshots.
+- `github_public_search` for no-login public repository search fallback.
 - `agent_reach_bridge` for optional AgentReach/upstream CLI results.
 - `opencli_bridge` for optional OpenCLI read-only adapter output.
 

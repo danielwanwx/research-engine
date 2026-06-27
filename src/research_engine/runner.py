@@ -11,6 +11,7 @@ from research_engine.connectors import (
     AgentReachBridgeConnector,
     ExternalJsonlConnector,
     FinanceQuoteConnector,
+    GitHubPublicSearchConnector,
     ManualConnector,
     OpenCliBridgeConnector,
     WebPageConnector,
@@ -34,6 +35,7 @@ DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
     AgentReachBridgeConnector.connector_id: AgentReachBridgeConnector,
     ExternalJsonlConnector.connector_id: ExternalJsonlConnector,
     FinanceQuoteConnector.connector_id: FinanceQuoteConnector,
+    GitHubPublicSearchConnector.connector_id: GitHubPublicSearchConnector,
     ManualConnector.connector_id: ManualConnector,
     OpenCliBridgeConnector.connector_id: OpenCliBridgeConnector,
     WebPageConnector.connector_id: WebPageConnector,
@@ -96,6 +98,7 @@ class ResearchEngine:
             topic=topic,
             external_evidence_paths=external_evidence_paths,
             platform_plan=platform_plan,
+            github_public=platform_scope == "all",
             agent_reach=agent_reach,
             agent_reach_command_templates=agent_reach_command_templates,
         )
@@ -112,6 +115,10 @@ class ResearchEngine:
                 "agent_reach": agent_reach,
                 "opencli": any(
                     request.source.get("connector") == "opencli_bridge"
+                    for request in source_requests
+                ),
+                "github_public": any(
+                    request.source.get("connector") == "github_public_search"
                     for request in source_requests
                 ),
             },
@@ -234,6 +241,7 @@ def build_source_requests(
     topic: str,
     external_evidence_paths: list[Path] | None = None,
     platform_plan: list[dict[str, Any]] | None = None,
+    github_public: bool = False,
     agent_reach: bool = False,
     agent_reach_command_templates: list[str] | None = None,
 ) -> list[CollectionRequest]:
@@ -255,6 +263,18 @@ def build_source_requests(
                 "source_id": "web_seed_pages",
                 "connector": "web_page",
                 "pages": pack.get("web_pages") or [],
+            }
+        )
+    github_query = github_query_from_platform_plan(platform_plan or []) if github_public else ""
+    if github_public and github_query:
+        sources.append(
+            {
+                "source_id": "github_public_search",
+                "connector": "github_public_search",
+                "platform": "github",
+                "query": github_query,
+                "source_kind": "github_public_repository",
+                "access_mode": "public_github_api",
             }
         )
     if external_evidence_paths:
@@ -312,6 +332,13 @@ def build_agent_reach_bridge_source(
         "source_kind": "agent_reach_bridge",
         "access_mode": "agent_reach_or_upstream_cli",
     }
+
+
+def github_query_from_platform_plan(platform_plan: list[dict[str, Any]]) -> str:
+    for row in platform_plan:
+        if row.get("platform") == "github":
+            return str(row.get("query") or "")
+    return ""
 
 
 def normalize_rows(results: list[CollectionResult]) -> list[dict[str, Any]]:
