@@ -98,16 +98,19 @@ cp -R skills/research-engine ~/.codex/skills/
 
 After installing, prompts such as `research AI infra jobs` or `调研一下 HBM
 供应链` route through the Research Engine workflow. The skill always starts
-with an option gate before collection:
+with a browser option gate before collection:
 
 - scope: United States, global English market, or cross-market comparison;
 - sources: official/public only, public plus community/open-source signals, or
   authorized logged-in exports;
 - depth: quick, deep, or audit-grade.
 
-When the Codex environment exposes a structured option UI, the skill uses that
-popup-style selector. Otherwise it falls back to one compact text choice and
-waits for the user's selection before running anything.
+The option gate uses the same pattern as Superpowers Brainstorming: the skill
+starts a localhost browser companion, shows clickable choices, records the
+selection, then continues the run. The scripts ship with the repo under
+`skills/research-engine/scripts/`, so the behavior is available to anyone who
+installs the skill. If the browser companion cannot start, the skill falls back
+to one compact text choice and waits before running anything.
 
 ## What You Get
 

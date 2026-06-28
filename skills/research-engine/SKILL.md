@@ -13,10 +13,13 @@ Do this even when the topic is already clear.
 
 Preferred behavior:
 
-- If the environment provides a structured option tool such as
-  `request_user_input`, use it to show 3 short multiple-choice questions.
-- If structured option tools are unavailable, ask one compact text message with
-  numbered choices and do not start the run until the user picks an option.
+- Use the bundled browser option companion, the same interaction pattern as
+  Superpowers Brainstorming: start a local server, push a clickable option
+  screen, open it for the user, wait for the `run:start` browser event, then
+  continue automatically.
+- Use `request_user_input` only when the host explicitly provides it and the
+  user asks for native Codex choices instead of the browser companion.
+- Use plain text choices only if browser/server startup fails.
 - Do not ask the user to re-enter the topic when it is already present in the
   request. Only ask for execution choices.
 - After the user chooses, proceed with the selected defaults without asking for
@@ -38,6 +41,52 @@ Default option gate:
    - `deep`: recommended balanced research
    - `audit`: stricter evidence review
 
+## Browser Option Companion
+
+Use the scripts in this skill directory. Resolve `<skill_dir>` to the directory
+containing this `SKILL.md`.
+
+1. Start the companion server:
+
+```bash
+<skill_dir>/scripts/start-server.sh --project-dir <research-engine-checkout> --foreground
+```
+
+The command prints JSON with `url`, `screen_dir`, and `state_dir`. In Codex,
+keep this foreground command running as the active companion session until the
+selection is read, then stop it with `scripts/stop-server.sh <session_dir>`.
+Use `--background` only in shells that preserve background processes after the
+tool call exits.
+
+2. Push the option screen:
+
+```bash
+node <skill_dir>/scripts/write-options-screen.mjs \
+  --screen-dir <screen_dir> \
+  --topic "<topic from the user request>"
+```
+
+3. Open `url` for the user with the browser/in-app-browser/Chrome tool when
+   available. If no browser tool is available, print the URL and ask the user to
+   open it. The user should only need to click options and `Start research`.
+
+4. Wait for the browser selection event:
+
+```bash
+node <skill_dir>/scripts/read-options-selection.mjs \
+  --state-dir <state_dir> \
+  --wait-ms 240000
+```
+
+The script returns JSON such as:
+
+```json
+{"scope":"us","sources":"public_community","depth":"deep","ready":true}
+```
+
+If `timed_out` is true or `ready` is false, do not start collection. Ask the
+user whether to retry the companion or fall back to text choices.
+
 ## Workflow
 
 Use Research Engine before ad hoc browsing when the task needs evidence
@@ -45,7 +94,7 @@ collection, source coverage, citations, contradiction checks, or reusable
 research artifacts.
 
 1. Locate the Research Engine checkout or installed package.
-2. Complete the mandatory option gate above.
+2. Complete the mandatory browser option gate above.
 3. For normal terminal use, run the interactive entry:
 
 ```bash

@@ -12,6 +12,7 @@ build/
 /captures/
 /cache/
 /.cache/
+/.research-engine/
 .env
 .env.*
 !.env.example
