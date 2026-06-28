@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from research_engine.packs import build_pack_queries, load_research_packs, pack_summary, select_research_pack
 
 
@@ -24,3 +27,16 @@ def test_pack_summary_and_queries_are_template_driven():
     assert pack_summary(pack)["intent"] == "financial_market_research"
     assert any(query["tier"] == "official_ir" for query in queries)
     assert all("{topic}" not in query["query"] for query in queries)
+
+
+def test_project_packs_match_packaged_defaults():
+    project_root = Path(__file__).resolve().parents[1]
+    project_pack_dir = project_root / "packs"
+    package_pack_dir = project_root / "src/research_engine/default_packs"
+
+    for project_pack in project_pack_dir.glob("*.json"):
+        packaged_pack = package_pack_dir / project_pack.name
+        assert packaged_pack.exists(), f"missing packaged default pack: {project_pack.name}"
+        assert json.loads(project_pack.read_text(encoding="utf-8")) == json.loads(
+            packaged_pack.read_text(encoding="utf-8")
+        )

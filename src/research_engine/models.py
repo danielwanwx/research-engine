@@ -42,7 +42,12 @@ class ResearchRunResult:
     status: str
     dry_run: bool
     raw_rows: int
+    loop_status: str = ""
+    stop_reason: str = ""
+    feedback_action_count: int = 0
     warnings: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload["run_status"] = self.status
+        return payload

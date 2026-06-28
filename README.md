@@ -24,6 +24,20 @@ Requires Python 3.10 or newer.
 python -m pip install -e '.[dev]'
 ```
 
+For the simplest user flow, run the interactive wizard:
+
+```bash
+research
+research "research DRAM HBM supply shortage"
+```
+
+The wizard asks a few read-only questions, then writes the same auditable
+artifacts as the advanced CLI. It does not ask for cookies, tokens, passwords,
+or API keys; logged-in or private evidence should be exported to JSONL and
+selected when prompted.
+
+Advanced and automated runs can still use `research-engine` directly:
+
 ```bash
 research-engine run "research AI agent coding tools" --pack auto --dry-run --output runs
 research-engine run "research DRAM HBM supply shortage" --pack auto --output runs
@@ -71,7 +85,24 @@ The built-in connectors use public endpoints and static page fetches. They do no
 - **Execution**: runs connector requests with bounded concurrency, retry telemetry, and optional result caching.
 - **Runner**: chooses a pack, builds a query plan, delegates collection to the execution layer, writes artifacts.
 - **Evidence quality**: deterministic source scoring, duplicate detection, and directional conflict flags written before synthesis.
+- **Loop contract**: records the goal, source scope, checks, feedback rules, stop conditions, and human gates for each run.
+- **Domain-agent evidence layer**: insurance, medical billing, legal, compliance, procurement, sales, support, and code agents can call the same research loop for traceable evidence while keeping high-risk business actions behind their own human gates.
 - **Synthesis**: deterministic scoring over collected evidence; LLM analysis happens after the traceable evidence pack exists.
+
+## Loop Engineering Contract
+
+Every run writes a loop contract and record before downstream LLM or agent use.
+Downstream agents should gate on `loop_status` and `stop_reason`; top-level
+`status` is the collection/run status and may be `complete` while the loop still
+requires review.
+The runtime checks four requirements:
+
+- **Context hygiene**: raw evidence is offloaded to artifacts such as `evidence.jsonl`; reports and manifests keep compact summaries and references.
+- **Stop brakes**: worker, retry, timeout, and per-source result limits are explicit; failed source plans or empty collection stop the run before synthesis.
+- **Critic separation**: source quality, duplicate pressure, conflict review, claim grounding, and connector health are checked separately from collection.
+- **Tool focus**: connector plans should stay small, explicit, non-overlapping, and read-oriented.
+
+See `docs/superpowers/specs/2026-06-27-domain-agent-loop-contract-design.md` for the domain-agent integration contract.
 
 ## Pack Model
 
@@ -142,9 +173,12 @@ Each run writes:
 - `claim_review.json`
 - `supply_demand_matrix.json`
 - `decision_brief.json`
+- `loop_contract.json`
+- `loop_record.json`
 - `research_report.md`
 
 `run_manifest.json` includes `status`, connector warnings, execution summary, and a compact quality summary. `collection_execution.json` records request-level connector status, attempts, cache hits, row counts, and warnings. `evidence.jsonl` is the source trace an LLM should cite from, not a hidden intermediate; each row includes `quality_score`, `quality_tier`, duplicate metadata, and quality reasons. `evidence_quality.json` contains duplicate clusters, source-tier counts, and directional conflict flags that should be reviewed before final synthesis.
+`loop_contract.json` makes the run inspectable as a loop: goal, input scope, execute steps, checks, feedback rules, records, stop conditions, and human gates. `loop_record.json` records which checks passed, warned, failed, or skipped, why the run stopped, and the concrete next actions before an LLM consumes the evidence.
 
 Connector result caching is opt-in via `--cache-dir`; leave it off when source freshness matters.
 
@@ -167,7 +201,7 @@ Optional CLI bridges execute without a shell, enforce allowlisted entrypoints, a
 - Expand the AgentReach bridge as an optional upstream capability layer, not a runtime dependency.
 - Expand the OpenCLI bridge for authorized read-only adapters and no-API websites.
 - Add a deeper web crawler connector for sitemap, bounded crawl, and optional Playwright rendering.
-- Add loop runtime, reflection, persistent memory, and deterministic evals.
+- Expand loop runtime with repair passes, reflection, persistent memory, and deterministic evals.
 - Add pack schema validation and examples for more domains.
 - Expand quality scoring with source registries, citation graph checks, and pack-specific contradiction rules.
 - Add async connector execution and retry/caching policies after the synchronous API is stable.

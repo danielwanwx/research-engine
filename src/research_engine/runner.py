@@ -17,11 +17,18 @@ from research_engine.connectors import (
     WebPageConnector,
 )
 from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
+from research_engine.loop import build_loop_contract, build_loop_record
 from research_engine.models import CollectionRequest, CollectionResult, ResearchRunResult, utc_now
 from research_engine.packs import build_pack_queries, pack_summary, select_research_pack
 from research_engine.platforms import build_platform_research_plan
 from research_engine.quality import enrich_rows_with_quality
-from research_engine.security import artifact_path_ref, redact_text
+from research_engine.security import (
+    artifact_path_ref,
+    redact_text,
+    sanitize_for_artifact,
+    sensitive_paths,
+    sensitive_value_paths,
+)
 from research_engine.synthesis import (
     build_claim_review,
     build_decision_brief,
@@ -123,10 +130,11 @@ class ResearchEngine:
                 ),
             },
             "agent_reach_commands": [
-                redact_text(template)
-                for template in agent_reach_command_templates or []
+                redact_text(template) for template in agent_reach_command_templates or []
             ],
-            "external_evidence_paths": [artifact_path_ref(path) for path in external_evidence_paths or []],
+            "external_evidence_paths": [
+                artifact_path_ref(path) for path in external_evidence_paths or []
+            ],
             "sources": [
                 {
                     "source_id": request.source_id,
@@ -135,6 +143,18 @@ class ResearchEngine:
                 for request in source_requests
             ],
         }
+        loop_contract = build_loop_contract(
+            topic=topic,
+            pack=selected_pack,
+            query_plan=query_plan,
+            dry_run=dry_run,
+            execution_options={
+                "max_workers": self.execution_options.max_workers,
+                "retries": self.execution_options.retries,
+                "cache_enabled": self.execution_options.cache_dir is not None,
+                "source_timeout_seconds": self.execution_options.source_timeout_seconds,
+            },
+        )
         collection_results: list[CollectionResult] = []
         warnings: list[str] = []
         execution_report = {
@@ -167,6 +187,8 @@ class ResearchEngine:
             )
             warnings.extend(execution_warnings)
         rows = normalize_rows(collection_results)
+        rows, sanitation_warnings = sanitize_rows_for_artifacts(rows)
+        warnings.extend(sanitation_warnings)
         rows, quality_report = enrich_rows_with_quality(rows, topic=topic, pack=selected_pack)
         claim_review = build_claim_review(
             topic=topic,
@@ -181,7 +203,21 @@ class ResearchEngine:
             claim_review=claim_review,
             matrix=matrix,
         )
-        status = run_status(dry_run=dry_run, rows=rows, warnings=warnings, source_requests=source_requests)
+        status = run_status(
+            dry_run=dry_run, rows=rows, warnings=warnings, source_requests=source_requests
+        )
+        loop_record = build_loop_record(
+            topic=topic,
+            status=status,
+            dry_run=dry_run,
+            rows=rows,
+            warnings=warnings,
+            query_plan=query_plan,
+            execution_report=execution_report,
+            quality_report=quality_report,
+            claim_review=claim_review,
+            decision_brief=decision_brief,
+        )
         manifest = {
             "run_id": run_id,
             "topic": topic,
@@ -199,6 +235,11 @@ class ResearchEngine:
                 "duplicate_cluster_count": quality_report.get("duplicate_cluster_count"),
                 "conflict_flag_count": len(quality_report.get("conflict_flags") or []),
             },
+            "loop_summary": {
+                "loop_status": loop_record.get("loop_status"),
+                "stop_reason": loop_record.get("stop_reason"),
+                "feedback_action_count": len(loop_record.get("feedback_actions") or []),
+            },
         }
         write_json(run_dir / "run_manifest.json", manifest)
         write_json(run_dir / "query_plan.json", query_plan)
@@ -208,6 +249,8 @@ class ResearchEngine:
         write_json(run_dir / "claim_review.json", claim_review)
         write_json(run_dir / "supply_demand_matrix.json", matrix)
         write_json(run_dir / "decision_brief.json", decision_brief)
+        write_json(run_dir / "loop_contract.json", loop_contract)
+        write_json(run_dir / "loop_record.json", loop_record)
         (run_dir / "research_report.md").write_text(
             render_report(
                 topic=topic,
@@ -216,6 +259,7 @@ class ResearchEngine:
                 claim_review=claim_review,
                 decision_brief=decision_brief,
                 quality_report=quality_report,
+                loop_record=loop_record,
             ),
             encoding="utf-8",
         )
@@ -227,6 +271,9 @@ class ResearchEngine:
             status=status,
             dry_run=dry_run,
             raw_rows=len(rows),
+            loop_status=str(loop_record.get("loop_status") or ""),
+            stop_reason=str(loop_record.get("stop_reason") or ""),
+            feedback_action_count=len(loop_record.get("feedback_actions") or []),
             warnings=warnings,
         )
 
@@ -354,6 +401,31 @@ def normalize_rows(results: list[CollectionResult]) -> list[dict[str, Any]]:
     return rows
 
 
+def sanitize_rows_for_artifacts(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    sanitized_rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for index, row in enumerate(rows, start=1):
+        sensitive = sorted({*sensitive_paths(row), *sensitive_value_paths(row)})
+        safe_row = sanitize_for_artifact(row)
+        if not isinstance(safe_row, dict):
+            safe_row = {}
+        if sensitive:
+            row_label = str(
+                safe_row.get("evidence_id")
+                or safe_row.get("source_id")
+                or safe_row.get("title")
+                or f"row_{index}"
+            )
+            warnings.append(
+                "artifact sanitation redacted/dropped sensitive field(s) in "
+                f"{row_label}: {','.join(sensitive[:8])}"
+            )
+        sanitized_rows.append(safe_row)
+    return sanitized_rows, warnings
+
+
 def run_status(
     *,
     dry_run: bool,
@@ -367,4 +439,4 @@ def run_status(
         return "failed_no_sources"
     if rows:
         return "complete_with_warnings" if warnings else "complete"
-    return "failed_no_rows" if warnings else "complete_empty"
+    return "failed_no_rows"

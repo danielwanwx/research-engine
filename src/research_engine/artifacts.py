@@ -32,6 +32,7 @@ def render_report(
     claim_review: dict[str, Any],
     decision_brief: dict[str, Any],
     quality_report: dict[str, Any] | None = None,
+    loop_record: dict[str, Any] | None = None,
 ) -> str:
     overall = claim_review.get("overall") or {}
     quality = quality_report or {}
@@ -59,4 +60,21 @@ def render_report(
         lines.extend(["", "## Evidence Quality Warnings"])
         for warning in quality.get("warnings") or []:
             lines.append(f"- {warning}")
+    loop = loop_record or {}
+    if loop:
+        lines.extend(
+            [
+                "",
+                "## Loop Status",
+                f"- Loop status: `{loop.get('loop_status') or 'unknown'}`",
+                f"- Stop reason: `{loop.get('stop_reason') or 'unknown'}`",
+            ]
+        )
+        feedback_actions = loop.get("feedback_actions") or []
+        if feedback_actions:
+            lines.append("- Feedback actions:")
+            for action in feedback_actions[:5]:
+                lines.append(
+                    f"  - `{action.get('reason') or 'review'}`: {action.get('action') or ''}"
+                )
     return "\n".join(lines) + "\n"

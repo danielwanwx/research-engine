@@ -12,20 +12,69 @@ from urllib.parse import quote, quote_plus
 
 REDACTED = "[REDACTED]"
 
-SENSITIVE_KEY_RE = re.compile(
-    r"(cookie|set-cookie|authorization|bearer|token|secret|password|passwd|api[_-]?key|"
-    r"storage[_-]?state|credential|session)",
-    re.IGNORECASE,
+SENSITIVE_KEY_TOKENS = {
+    "access_token",
+    "apikey",
+    "api_key",
+    "auth",
+    "auth_token",
+    "authorization",
+    "bearer",
+    "cookie",
+    "credential",
+    "credentials",
+    "csrf_token",
+    "csrftoken",
+    "id_token",
+    "passwd",
+    "password",
+    "refresh_token",
+    "secret",
+    "session",
+    "session_id",
+    "sessionid",
+    "sid",
+    "storage_state",
+    "token",
+    "xsrf_token",
+}
+DOMAIN_SAFE_KEY_PREFIXES = (
+    "prior_authorization",
+    "pre_authorization",
+    "preauthorization",
+)
+DOMAIN_SAFE_SENSITIVE_SUFFIXES = (
+    "_api_key",
+    "_apikey",
+    "_auth",
+    "_cookie",
+    "_credential",
+    "_credentials",
+    "_password",
+    "_secret",
+    "_session",
+    "_session_id",
+    "_sessionid",
+    "_sid",
+    "_token",
 )
 SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(cookie|set-cookie|authorization|bearer|token|secret|password|passwd|"
+    r"(?i)\b(cookie|set-cookie|bearer|token|secret|password|passwd|"
     r"api[_-]?key|access[_-]?token|auth[_-]?token|id[_-]?token|refresh[_-]?token|"
     r"storage[_-]?state|credential|session(?:id|[_-]?id)?)\s*[:=]\s*[^\s,;&]+"
 )
-SENSITIVE_HEADER_RE = re.compile(r"(?im)\b(cookie|set-cookie|authorization)\s*[:=]\s*[^\r\n]+")
-AUTH_BEARER_HEADER_RE = re.compile(r"(?i)\bauthorization\s*[:=]\s*bearer\s+[^\s,;]+")
+SENSITIVE_HEADER_RE = re.compile(r"(?im)\b(cookie|set-cookie)\s*[:=]\s*[^\r\n]+")
+AUTH_CREDENTIAL_HEADER_RE = re.compile(
+    r"(?im)^\s*authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9_-]*)\s+[^\r\n,;]+"
+)
 BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
-COMMON_SECRET_RE = re.compile(r"\b(?:sk|ghp|github_pat|xoxb|xoxp)-[A-Za-z0-9_=-]{8,}\b")
+COMMON_SECRET_RE = re.compile(
+    r"\b(?:sk|xoxb|xoxp)-[A-Za-z0-9_=-]{8,}\b|"
+    r"\bghp_[A-Za-z0-9_]{20,}\b|"
+    r"\bgithub_pat_[A-Za-z0-9_]{20,}\b|"
+    r"\bAKIA[0-9A-Z]{16}\b|"
+    r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"
+)
 SENSITIVE_URL_PARAM_RE = re.compile(
     r"(?i)([?&;](?:access_token|auth_token|id_token|refresh_token|sessionid|"
     r"session_id|sid|csrftoken|csrf_token|xsrf_token|token|api_key|apikey|"
@@ -107,13 +156,27 @@ COMMAND_LIKE_KEYS = {"argv", "cmd", "command", "command_argv", "command_line"}
 
 
 def is_sensitive_key(key: Any) -> bool:
-    return bool(SENSITIVE_KEY_RE.search(str(key)))
+    normalized = re.sub(r"[^a-zA-Z0-9]+", "_", str(key).strip().lower()).strip("_")
+    if any(normalized.startswith(prefix) for prefix in DOMAIN_SAFE_KEY_PREFIXES):
+        if normalized.endswith(DOMAIN_SAFE_SENSITIVE_SUFFIXES):
+            return True
+        return False
+    if normalized in SENSITIVE_KEY_TOKENS:
+        return True
+    if normalized.startswith(("authorization_", "auth_header", "authentication_header")):
+        return True
+    tokens = {token for token in normalized.split("_") if token}
+    token_sensitive_keys = SENSITIVE_KEY_TOKENS - {"authorization", "auth"}
+    return bool(tokens & token_sensitive_keys)
 
 
 def redact_text(value: Any) -> str:
     text = str(value)
     text = SENSITIVE_HEADER_RE.sub(lambda match: f"{match.group(1)}={REDACTED}", text)
-    text = AUTH_BEARER_HEADER_RE.sub(f"authorization=Bearer {REDACTED}", text)
+    text = AUTH_CREDENTIAL_HEADER_RE.sub(
+        lambda match: f"authorization={match.group(1)} {REDACTED}",
+        text,
+    )
     text = BEARER_RE.sub(f"Bearer {REDACTED}", text)
     text = SENSITIVE_URL_PARAM_RE.sub(lambda match: f"{match.group(1)}{REDACTED}", text)
     text = SENSITIVE_FLAG_VALUE_TEXT_RE.sub(lambda match: f"{match.group(1)}{REDACTED}", text)
@@ -156,6 +219,21 @@ def sensitive_paths(value: Any, *, prefix: str = "") -> list[str]:
     elif isinstance(value, list):
         for index, nested in enumerate(value):
             paths.extend(sensitive_paths(nested, prefix=f"{prefix}[{index}]"))
+    return paths
+
+
+def sensitive_value_paths(value: Any, *, prefix: str = "") -> list[str]:
+    paths: list[str] = []
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            key_text = str(key)
+            path = f"{prefix}.{key_text}" if prefix else key_text
+            paths.extend(sensitive_value_paths(nested, prefix=path))
+    elif isinstance(value, list):
+        for index, nested in enumerate(value):
+            paths.extend(sensitive_value_paths(nested, prefix=f"{prefix}[{index}]"))
+    elif isinstance(value, str) and redact_text(value) != value:
+        paths.append(prefix or "<value>")
     return paths
 
 

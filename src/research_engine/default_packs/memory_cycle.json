@@ -48,7 +48,14 @@
     {
       "claim_id": "price_acceleration",
       "question": "Are contract prices rising sharply in the current cycle?",
-      "keywords": ["contract prices", "qoq", "price", "pricing", "asp"],
+      "keywords": [
+        "contract prices",
+        "qoq",
+        "price increases",
+        "pricing",
+        "asp",
+        "average selling prices"
+      ],
       "min_evidence": 1
     },
     {

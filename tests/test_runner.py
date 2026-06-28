@@ -134,6 +134,32 @@ class FakeGitHubPublicConnector:
         )
 
 
+class EmptyManualConnector:
+    connector_id = "manual"
+
+    def collect(self, request):
+        return CollectionResult(source_id=request.source_id, connector=self.connector_id, rows=[])
+
+
+class SensitiveStringConnector:
+    connector_id = "manual"
+
+    def collect(self, request):
+        return CollectionResult(
+            source_id=request.source_id,
+            connector=self.connector_id,
+            rows=[
+                {
+                    "source_id": request.source_id,
+                    "connector": self.connector_id,
+                    "title": "unsafe custom connector row",
+                    "text": "Visible policy text Cookie: sessionid=custom-secret-session",
+                    "metadata": {"authorization": "Bearer custom-secret-token"},
+                }
+            ],
+        )
+
+
 def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     engine = ResearchEngine(output_dir=tmp_path)
 
@@ -149,10 +175,17 @@ def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     assert result.raw_rows == 0
     assert json.loads((run_dir / "run_manifest.json").read_text())["status"] == "planned"
     query_plan = json.loads((run_dir / "query_plan.json").read_text())
+    loop_contract = json.loads((run_dir / "loop_contract.json").read_text())
+    loop_record = json.loads((run_dir / "loop_record.json").read_text())
     assert query_plan["pack"]["id"] == "memory_cycle"
     assert {"x", "reddit", "github"}.issubset(
         {row["platform"] for row in query_plan["platform_research_plan"]}
     )
+    assert loop_contract["loop_id"] == "research_loop_v1"
+    assert loop_record["loop_status"] == "planned"
+    assert loop_record["stop_reason"] == "planned_before_collection"
+    assert result.loop_status == "planned"
+    assert result.stop_reason == "planned_before_collection"
 
 
 def test_runner_marks_non_dry_run_without_sources_as_failed_no_sources(tmp_path):
@@ -165,10 +198,51 @@ def test_runner_marks_non_dry_run_without_sources_as_failed_no_sources(tmp_path)
     )
 
     manifest = json.loads((tmp_path / "2026-06-21-generic-empty/run_manifest.json").read_text())
+    loop_record = json.loads((tmp_path / "2026-06-21-generic-empty/loop_record.json").read_text())
     assert result.status == "failed_no_sources"
+    assert result.loop_status == "blocked"
+    assert result.stop_reason == "no_executable_sources"
     assert result.raw_rows == 0
     assert manifest["status"] == "failed_no_sources"
+    assert manifest["loop_summary"]["loop_status"] == "blocked"
+    assert loop_record["stop_reason"] == "no_executable_sources"
+    assert any(
+        action["reason"] == "failed_no_sources" for action in loop_record["feedback_actions"]
+    )
     assert "no executable sources" in " ".join(result.warnings)
+
+
+def test_runner_marks_empty_connector_results_as_failed_no_rows(tmp_path):
+    pack_dir = tmp_path / "packs"
+    pack_dir.mkdir()
+    (pack_dir / "generic.json").write_text(
+        json.dumps(
+            {
+                "id": "generic",
+                "label": "Generic",
+                "sources": [{"source_id": "empty_rows", "connector": "manual"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = ResearchEngine(
+        output_dir=tmp_path / "runs",
+        pack_dir=pack_dir,
+        connectors={"manual": EmptyManualConnector},
+    )
+
+    result = engine.run("empty connector result", run_date="2026-06-27", slug="empty")
+
+    run_dir = tmp_path / "runs/2026-06-27-empty"
+    manifest = json.loads((run_dir / "run_manifest.json").read_text())
+    loop_record = json.loads((run_dir / "loop_record.json").read_text())
+
+    assert result.status == "failed_no_rows"
+    assert result.loop_status == "blocked"
+    assert result.stop_reason == "sources_returned_no_evidence"
+    assert manifest["status"] == "failed_no_rows"
+    assert loop_record["loop_status"] == "blocked"
+    assert loop_record["stop_reason"] == "sources_returned_no_evidence"
 
 
 def test_runner_collects_with_injected_connectors_and_writes_synthesis(tmp_path):
@@ -188,11 +262,19 @@ def test_runner_collects_with_injected_connectors_and_writes_synthesis(tmp_path)
 
     run_dir = tmp_path / "2026-06-21-memory-collect"
     assert result.raw_rows == 2
-    assert json.loads((run_dir / "claim_review.json").read_text())["overall"]["stance"] == "supported"
+    assert (
+        json.loads((run_dir / "claim_review.json").read_text())["overall"]["stance"] == "supported"
+    )
     assert json.loads((run_dir / "evidence_quality.json").read_text())["row_count"] == 2
+    loop_record = json.loads((run_dir / "loop_record.json").read_text())
     first_row = json.loads((run_dir / "evidence.jsonl").read_text().splitlines()[0])
     assert first_row["quality_tier"] in {"medium", "high"}
+    assert loop_record["loop_status"] in {"complete", "complete_with_review_required"}
+    assert {check["check_id"] for check in loop_record["check_results"]}.issuperset(
+        {"bounded_execution", "evidence_collected", "claim_grounding"}
+    )
     assert (run_dir / "research_report.md").read_text().startswith("# Research Report")
+    assert "## Loop Status" in (run_dir / "research_report.md").read_text()
 
 
 def test_cli_run_subcommand_accepts_pack_auto(tmp_path, capsys):
@@ -212,6 +294,9 @@ def test_cli_run_subcommand_accepts_pack_auto(tmp_path, capsys):
 
     assert exit_code == 0
     assert payload["pack_id"] == "memory_cycle"
+    assert payload["run_status"] == "planned"
+    assert payload["loop_status"] == "planned"
+    assert payload["stop_reason"] == "planned_before_collection"
     assert (tmp_path / payload["run_id"] / "query_plan.json").exists()
 
 
@@ -269,6 +354,49 @@ def test_runner_accepts_connector_instances(tmp_path):
 
     assert result.status == "complete"
     assert result.raw_rows == 1
+
+
+def test_runner_sanitizes_custom_connector_rows_before_artifact_write(tmp_path):
+    pack_dir = tmp_path / "packs"
+    pack_dir.mkdir()
+    (pack_dir / "generic.json").write_text(
+        json.dumps(
+            {
+                "id": "generic",
+                "label": "Generic",
+                "sources": [{"source_id": "unsafe_rows", "connector": "manual"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = ResearchEngine(
+        output_dir=tmp_path / "runs",
+        pack_dir=pack_dir,
+        connectors={"manual": SensitiveStringConnector},
+        source_timeout_seconds=10,
+    )
+
+    result = engine.run("custom connector sensitive row", run_date="2026-06-27", slug="safe")
+
+    run_dir = tmp_path / "runs/2026-06-27-safe"
+    artifact_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            run_dir / "run_manifest.json",
+            run_dir / "evidence.jsonl",
+            run_dir / "loop_record.json",
+            run_dir / "research_report.md",
+        )
+    )
+    row = json.loads((run_dir / "evidence.jsonl").read_text().splitlines()[0])
+
+    assert result.status == "complete_with_warnings"
+    assert result.loop_status == "complete_with_review_required"
+    assert "artifact sanitation redacted/dropped sensitive field" in " ".join(result.warnings)
+    assert "custom-secret-session" not in artifact_text
+    assert "custom-secret-token" not in artifact_text
+    assert "authorization" not in row["metadata"]
+    assert "[REDACTED]" in row["text"]
 
 
 def test_runner_collects_agent_reach_bridge_with_injected_connector(tmp_path):
@@ -399,6 +527,9 @@ def test_cli_imports_external_evidence_jsonl(tmp_path, capsys):
 
     assert exit_code == 0
     assert payload["status"] == "complete"
+    assert payload["run_status"] == "complete"
+    assert payload["loop_status"] == "complete_with_review_required"
+    assert payload["stop_reason"] == "completed_with_review_required"
     assert payload["raw_rows"] == 1
     query_plan = json.loads((run_dir / "query_plan.json").read_text())
     execution = json.loads((run_dir / "collection_execution.json").read_text())
@@ -454,6 +585,8 @@ def test_cli_external_evidence_redacts_secrets_from_artifacts(tmp_path, capsys):
     )
 
     assert exit_code == 0
+    assert payload["status"] == "complete_with_warnings"
+    assert payload["loop_status"] == "complete_with_review_required"
     assert "artifact-secret-token" not in artifact_text
     assert "artifact-secret-cookie" not in artifact_text
     assert "artifact-secret-key" not in artifact_text

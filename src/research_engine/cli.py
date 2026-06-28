@@ -14,12 +14,20 @@ from research_engine.runner import ResearchEngine
 COMMANDS = {"run", "doctor"}
 
 
+def research_main(argv: list[str] | None = None) -> int:
+    from research_engine.interactive import run_research_wizard
+
+    return run_research_wizard(argv)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run evidence-first research collection.")
     subparsers = parser.add_subparsers(dest="command")
     run_parser = subparsers.add_parser("run", help="Run a research collection.")
     add_run_arguments(run_parser)
-    doctor_parser = subparsers.add_parser("doctor", help="Check local Research Engine capabilities.")
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="Check local Research Engine capabilities."
+    )
     add_doctor_arguments(doctor_parser)
     return parser
 
@@ -30,7 +38,9 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--pack", dest="pack_id", default="auto", help="Pack id, or 'auto'.")
     parser.add_argument("--pack-dir", type=Path, help="Directory containing JSON research packs.")
     parser.add_argument("--output", type=Path, default=Path("runs"), help="Output directory.")
-    parser.add_argument("--dry-run", action="store_true", help="Write plan artifacts without collection.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Write plan artifacts without collection."
+    )
     parser.add_argument(
         "--platform-scope",
         choices=["quick", "broad", "deep", "all"],
@@ -58,8 +68,12 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
             "{query}, {platform}, {max_results}. Repeatable."
         ),
     )
-    parser.add_argument("--max-workers", type=int, default=4, help="Maximum concurrent connector requests.")
-    parser.add_argument("--retries", type=int, default=1, help="Retry count for failed connector requests.")
+    parser.add_argument(
+        "--max-workers", type=int, default=4, help="Maximum concurrent connector requests."
+    )
+    parser.add_argument(
+        "--retries", type=int, default=1, help="Retry count for failed connector requests."
+    )
     parser.add_argument("--cache-dir", type=Path, help="Optional connector-result cache directory.")
     parser.add_argument(
         "--source-timeout-seconds",
