@@ -1,69 +1,75 @@
 # Research Engine
 
-Evidence-first research loops for AI agents.
+> Evidence-first research infrastructure for AI agents.
 
-Research Engine turns heterogeneous evidence from web pages, browser sessions, CLI tools, APIs, and manual captures into auditable research artifacts that agents and LLMs can analyze, verify, and improve over time.
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-alpha-orange.svg)](#roadmap)
 
-It is intentionally stdlib-first: packs are JSON files, connectors are small Python classes, and the runner writes transparent artifacts before an LLM consumes anything.
+Research Engine turns messy evidence from public pages, local exports, platform
+bridges, APIs, and manual captures into auditable artifacts that an agent can
+inspect before it writes an answer.
 
-## What Makes It Different
+It is designed for the research step behind domain agents: market research,
+investment memos, legal discovery, procurement intelligence, compliance review,
+sales operations, support QA, code migration analysis, and any workflow where
+"just search the web and summarize" is not enough.
 
-Research Engine is not just another crawler.
+## Why It Exists
 
-- **AgentReach** installs and exposes upstream platform CLIs.
-- **OpenCLI** turns websites and browser workflows into CLI-accessible capabilities.
-- **Research Engine** orchestrates research intent, evidence normalization, source quality scoring, contradiction checks, synthesis artifacts, and loop memory.
+Most agent research systems fail in predictable ways:
 
-AgentReach and OpenCLI are useful upstream capability providers. They should feed Research Engine; they are not required runtime dependencies for the core package.
+- they scrape first and ask what the evidence means later;
+- they mix trusted sources, weak sources, duplicates, and contradictions in one
+  context window;
+- they lose the trail between the final answer and the raw evidence;
+- they keep looping after there is no progress, or stop without saying why;
+- they require one-off scripts for every new platform.
+
+Research Engine treats research as a loop:
+
+```mermaid
+flowchart LR
+    A["Intent"] --> B["Pack routing"]
+    B --> C["Source plan"]
+    C --> D["Read-only connectors"]
+    D --> E["Evidence normalization"]
+    E --> F["Quality + conflict checks"]
+    F --> G["Deterministic artifacts"]
+    G --> H["LLM / agent analysis"]
+    F --> I["Stop reason + feedback actions"]
+```
+
+The output is not a hidden prompt. It is a run directory with evidence,
+quality checks, loop records, and synthesis inputs that can be reviewed,
+replayed, and improved.
 
 ## Quick Start
 
 Requires Python 3.10 or newer.
 
 ```bash
+# from a local checkout
 python -m pip install -e '.[dev]'
 ```
 
-For the simplest user flow, run the interactive wizard:
+For the simplest flow, run the interactive wizard:
 
 ```bash
 research
 research "research DRAM HBM supply shortage"
 ```
 
-The wizard asks a few read-only questions, then writes the same auditable
-artifacts as the advanced CLI. It does not ask for cookies, tokens, passwords,
-or API keys; logged-in or private evidence should be exported to JSONL and
-selected when prompted.
+The wizard asks for topic, depth, source scope, optional JSONL evidence exports,
+and final confirmation. It is read-only by design: no posting, messaging,
+trading, uploading, account mutation, or credential collection.
 
-Advanced and automated runs can still use `research-engine` directly:
+For scripted runs:
 
 ```bash
-research-engine run "research AI agent coding tools" --pack auto --dry-run --output runs
-research-engine run "research DRAM HBM supply shortage" --pack auto --output runs
-research-engine run "research DRAM HBM supply shortage" --pack auto --output runs --max-workers 4 --retries 1
+research-engine run "research AI coding agents" --pack auto --output runs
+research-engine run "research DRAM HBM supply shortage" --pack auto --depth deep --output runs
 research-engine run "research Lenny memory discussion" --external-evidence exports/lenny.jsonl --output runs
-```
-
-The module entrypoint works the same way:
-
-```bash
-python -m research_engine.cli run "research AI agent coding tools" --pack auto --dry-run
-```
-
-For local development:
-
-```bash
-python -m pytest -q
-python -m ruff check src tests
-```
-
-Or use the Makefile:
-
-```bash
-make test
-make lint
-make check
 ```
 
 Check optional local capabilities:
@@ -74,77 +80,129 @@ research-engine doctor agentreach
 research-engine doctor opencli --format json
 ```
 
-## Data Source Limits
+Run tests:
 
-The built-in connectors use public endpoints and static page fetches. They do not bypass paywalls, login walls, robots controls, broker entitlements, or platform rate limits. A run may finish as `complete_with_warnings`, `failed_no_sources`, or `failed_no_rows`; inspect `run_manifest.json` before passing artifacts to an LLM.
-
-## Concepts
-
-- **Research packs**: topic profiles with match terms, query templates, source hints, claim specs, and matrix nodes.
-- **Connectors**: source-specific collectors that return normalized evidence rows.
-- **Execution**: runs connector requests with bounded concurrency, retry telemetry, and optional result caching.
-- **Runner**: chooses a pack, builds a query plan, delegates collection to the execution layer, writes artifacts.
-- **Evidence quality**: deterministic source scoring, duplicate detection, and directional conflict flags written before synthesis.
-- **Loop contract**: records the goal, source scope, checks, feedback rules, stop conditions, and human gates for each run.
-- **Domain-agent evidence layer**: insurance, medical billing, legal, compliance, procurement, sales, support, and code agents can call the same research loop for traceable evidence while keeping high-risk business actions behind their own human gates.
-- **Synthesis**: deterministic scoring over collected evidence; LLM analysis happens after the traceable evidence pack exists.
-
-## Loop Engineering Contract
-
-Every run writes a loop contract and record before downstream LLM or agent use.
-Downstream agents should gate on `loop_status` and `stop_reason`; top-level
-`status` is the collection/run status and may be `complete` while the loop still
-requires review.
-The runtime checks four requirements:
-
-- **Context hygiene**: raw evidence is offloaded to artifacts such as `evidence.jsonl`; reports and manifests keep compact summaries and references.
-- **Stop brakes**: worker, retry, timeout, and per-source result limits are explicit; failed source plans or empty collection stop the run before synthesis.
-- **Critic separation**: source quality, duplicate pressure, conflict review, claim grounding, and connector health are checked separately from collection.
-- **Tool focus**: connector plans should stay small, explicit, non-overlapping, and read-oriented.
-
-See `docs/superpowers/specs/2026-06-27-domain-agent-loop-contract-design.md` for the domain-agent integration contract.
-
-## Pack Model
-
-Packs are JSON files. A pack can define:
-
-- `match_terms` for automatic topic routing.
-- `query_templates` for collection planning.
-- `finance_tickers`, `web_pages`, or custom `sources`.
-- `claim_specs` and `matrix_nodes` for deterministic synthesis.
-- `decision_rules` for stance summaries and action-bias labels.
-
-The runner uses the highest-scoring pack unless `--pack <id>` is supplied. Use `--pack auto` for explicit automatic selection.
-
-## Connector Model
-
-Connectors implement a small `collect(CollectionRequest) -> CollectionResult` interface. The scaffold includes:
-
-- `manual` for local or pack-provided rows.
-- `external_jsonl` for authorized evidence exported by logged-in browser tools, Agent Reach, or proprietary collectors.
-- `web_page` for public page text extraction.
-- `finance_quote` for public quote snapshots.
-- `github_public_search` for no-login public repository search fallback.
-- `agent_reach_bridge` for optional AgentReach/upstream CLI results.
-- `opencli_bridge` for optional OpenCLI read-only adapter output.
-
-Additional platform integrations should live behind this same connector interface so the core runner remains source-agnostic.
-
-See `docs/connector-support.md` for the current support matrix and planned connectors.
-
-OpenCLI bridge sources are pack-driven in v1. Example:
-
-```json
-{
-  "source_id": "opencli_x_seed",
-  "connector": "opencli_bridge",
-  "platform": "x",
-  "query": "loop engineering",
-  "command": "opencli x search --query \"{query}\" --limit {max_results} --format json"
-}
+```bash
+make check
 ```
 
-Minimal connector example:
+## What You Get
+
+Each run writes a traceable artifact bundle:
+
+```text
+runs/<timestamp-or-topic>/
+├── run_manifest.json
+├── query_plan.json
+├── collection_execution.json
+├── evidence.jsonl
+├── evidence_quality.json
+├── claim_review.json
+├── supply_demand_matrix.json
+├── decision_brief.json
+├── loop_contract.json
+├── loop_record.json
+└── research_report.md
+```
+
+Important files:
+
+- `evidence.jsonl` is the normalized source trace an LLM should cite from.
+- `evidence_quality.json` records source tiers, duplicate pressure, and
+  directional conflict flags.
+- `collection_execution.json` records connector status, retries, warnings,
+  cache hits, and row counts.
+- `loop_contract.json` defines the research loop: goal, source scope, checks,
+  feedback rules, records, stop conditions, and human gates.
+- `loop_record.json` records what passed, warned, failed, or stopped the run.
+
+## Core Ideas
+
+### Pack-driven research
+
+Research packs are JSON profiles for a domain or topic. A pack can define:
+
+- `match_terms` for automatic routing;
+- `query_templates` for collection planning;
+- `finance_tickers`, seed `web_pages`, or custom `sources`;
+- `claim_specs` and `matrix_nodes` for deterministic synthesis;
+- `decision_rules` for stance summaries and action-bias labels.
+
+Use `--pack auto` to route by topic, or `--pack <id>` to force a pack.
+
+### Source-agnostic connectors
+
+Connectors implement a small `collect(CollectionRequest) -> CollectionResult`
+contract. The core runner does not care whether evidence came from a public web
+page, a finance quote endpoint, a GitHub search, a logged-in browser export, or
+an upstream CLI bridge.
+
+Built-in connectors include:
+
+| Connector | Purpose |
+| --- | --- |
+| `manual` | Pack-provided or hand-authored evidence rows |
+| `external_jsonl` | Authorized exports from logged-in tools or private collectors |
+| `web_page` | Static public page fetches from explicit seed URLs |
+| `finance_quote` | Public quote snapshots for configured tickers |
+| `github_public_search` | Public GitHub repository search fallback |
+| `agent_reach_bridge` | Optional AgentReach/upstream CLI bridge output |
+| `opencli_bridge` | Optional OpenCLI read-only adapter output |
+
+See [docs/connector-support.md](docs/connector-support.md) for the current
+support matrix and planned connectors.
+
+### Loop-first execution
+
+Research Engine borrows from loop-engineering practice:
+
+- keep context clean by offloading raw evidence to files;
+- use a small, focused tool surface instead of an unbounded tool pile;
+- separate maker and checker steps;
+- stop for explicit reasons: no sources, no rows, failed checks, max iterations,
+  timeout, or human gate.
+
+Downstream agents should gate on `loop_status` and `stop_reason`, not just the
+top-level run status.
+
+## How It Compares
+
+Research Engine is not trying to replace crawlers, browsers, or platform CLIs.
+It is the orchestration and evidence layer that makes those tools useful inside
+agent workflows.
+
+| Tool type | Good at | Research Engine's role |
+| --- | --- | --- |
+| Web crawlers | Fetching pages at scale | Normalize, score, de-duplicate, and synthesize evidence |
+| Browser automation | Logged-in or dynamic workflows | Import authorized read-only captures as JSONL |
+| AgentReach-style CLIs | Exposing platform-specific tools | Treat CLI output as connector evidence |
+| OpenCLI-style adapters | Turning websites into commands | Run allowlisted read-only adapters behind the same contract |
+| LLM agents | Reasoning and writing | Consume auditable artifacts after checks run |
+
+## External Evidence
+
+Use JSONL when evidence comes from a logged-in browser session, paid source, or
+proprietary collector:
+
+```json
+{"title":"Source title","url":"https://example.com","text":"Visible evidence text","metadata":{"platform":"lenny"}}
+```
+
+Then run:
+
+```bash
+research-engine run "research Lenny memory discussion" \
+  --external-evidence exports/lenny.jsonl \
+  --output runs
+```
+
+Research Engine does not read browser cookies, bypass login walls, scrape around
+paywalls, or ask for passwords/API keys in prompts. Artifact references store
+evidence filenames and stable path hashes rather than full local paths. Token-like
+fields, authorization headers, cookie values, and command payloads are sanitized
+before artifacts are written.
+
+## Minimal Connector Example
 
 ```python
 from research_engine.models import CollectionResult
@@ -157,51 +215,71 @@ class MyConnector:
         return CollectionResult(
             source_id=request.source_id,
             connector=self.connector_id,
-            rows=[{"title": "Example", "url": "https://example.com", "text": "Evidence"}],
+            rows=[
+                {
+                    "title": "Example",
+                    "url": "https://example.com",
+                    "text": "Evidence text visible to the collector.",
+                }
+            ],
         )
 ```
 
-## Artifact Output
+Additional integrations should live behind this connector interface so the core
+runner remains source-agnostic.
 
-Each run writes:
+## Current Limits
 
-- `run_manifest.json`
-- `query_plan.json`
-- `collection_execution.json`
-- `evidence.jsonl`
-- `evidence_quality.json`
-- `claim_review.json`
-- `supply_demand_matrix.json`
-- `decision_brief.json`
-- `loop_contract.json`
-- `loop_record.json`
-- `research_report.md`
+Research Engine is alpha software.
 
-`run_manifest.json` includes `status`, connector warnings, execution summary, and a compact quality summary. `collection_execution.json` records request-level connector status, attempts, cache hits, row counts, and warnings. `evidence.jsonl` is the source trace an LLM should cite from, not a hidden intermediate; each row includes `quality_score`, `quality_tier`, duplicate metadata, and quality reasons. `evidence_quality.json` contains duplicate clusters, source-tier counts, and directional conflict flags that should be reviewed before final synthesis.
-`loop_contract.json` makes the run inspectable as a loop: goal, input scope, execute steps, checks, feedback rules, records, stop conditions, and human gates. `loop_record.json` records which checks passed, warned, failed, or skipped, why the run stopped, and the concrete next actions before an LLM consumes the evidence.
+- Built-in web collection fetches explicit public pages; it is not yet a broad
+  crawler.
+- Optional bridge connectors depend on local tools being installed and configured.
+- Logged-in or paid sources must be provided as authorized exports, not raw
+  credentials.
+- Quality scoring is deterministic and inspectable, but still early.
+- The engine prepares evidence for analysis; it does not replace expert judgment.
 
-Connector result caching is opt-in via `--cache-dir`; leave it off when source freshness matters.
+## Development
 
-## External Evidence
-
-Use `--external-evidence path.jsonl` when evidence comes from a logged-in browser session or another authorized collector. Each JSONL line should be an object with at least:
-
-```json
-{"title": "Source title", "url": "https://example.com", "text": "Visible evidence text", "metadata": {"platform": "lenny"}}
+```bash
+python -m pip install -e '.[dev]'
+make check
 ```
 
-The engine imports these rows through the same execution, quality, and synthesis pipeline as built-in connectors. It does not read cookies, bypass login walls, or control Chrome.
-Artifact references store only the evidence filename plus a stable path hash; full local paths, cookies, authorization headers, and token-like fields are redacted or dropped before rows are written.
-Optional CLI bridges execute without a shell, enforce allowlisted entrypoints, and reject command terms or flags associated with account mutation or child-command execution.
+Useful commands:
+
+```bash
+research-engine run "research AI coding agents" --pack auto --dry-run --output runs
+research-engine doctor --format json
+python -m pytest -q
+python -m ruff check src tests
+```
 
 ## Roadmap
 
-- Add richer local-file/manual evidence import from CLI.
-- Add optional logged-in browser collectors as external connectors, not core assumptions.
-- Expand the AgentReach bridge as an optional upstream capability layer, not a runtime dependency.
-- Expand the OpenCLI bridge for authorized read-only adapters and no-API websites.
-- Add a deeper web crawler connector for sitemap, bounded crawl, and optional Playwright rendering.
-- Expand loop runtime with repair passes, reflection, persistent memory, and deterministic evals.
-- Add pack schema validation and examples for more domains.
-- Expand quality scoring with source registries, citation graph checks, and pack-specific contradiction rules.
-- Add async connector execution and retry/caching policies after the synchronous API is stable.
+- Bounded crawler connector with sitemap support and optional Playwright rendering.
+- More first-party packs for finance, legal, procurement, compliance, sales,
+  support QA, and code migration research.
+- Stronger source registries, citation graph checks, and pack-specific
+  contradiction rules.
+- Repair passes that can revise a source plan when coverage is weak.
+- Persistent loop memory for repeated research programs.
+- More connector bridges for authorized platform exports.
+- Public examples and benchmark tasks for evidence quality and synthesis quality.
+
+## Contributing
+
+Contributions are welcome while the project is early. Good first areas:
+
+- new connector implementations;
+- research pack examples;
+- source quality heuristics;
+- artifact schema improvements;
+- tests around safety, redaction, and loop stopping behavior.
+
+Please keep connectors read-only by default and make source limitations explicit.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

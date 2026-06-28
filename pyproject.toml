@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "research-engine"
 version = "0.1.0"
-description = "Pack-driven evidence collection and research synthesis engine"
+description = "Evidence-first research infrastructure for AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Research Engine contributors" }]
-keywords = ["research", "evidence", "agents", "connectors", "synthesis"]
+keywords = ["research", "evidence", "agents", "connectors", "synthesis", "crawler"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
