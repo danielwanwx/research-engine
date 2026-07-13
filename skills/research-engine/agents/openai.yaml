@@ -1,4 +1,4 @@
 interface:
   display_name: "Research Engine"
   short_description: "Loop-first web research workflow"
-  default_prompt: "Use $research-engine to ask option choices first, then run source-grounded research."
+  default_prompt: "Use $research-engine to run source-grounded research with sensible defaults."

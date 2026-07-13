@@ -5,87 +5,13 @@ description: Use when the user asks to research, investigate, query, verify clai
 
 # Research Engine
 
-## Mandatory Option Gate
+## Execution Defaults
 
-Before running any collection, search, browser, Chrome, connector, or Research
-Engine command, present the user with an option gate and wait for their choice.
-Do this even when the topic is already clear.
-
-Preferred behavior:
-
-- Use the bundled browser option companion, the same interaction pattern as
-  Superpowers Brainstorming: start a local server, push a clickable option
-  screen, open it for the user, wait for the `run:start` browser event, then
-  continue automatically.
-- Use `request_user_input` only when the host explicitly provides it and the
-  user asks for native Codex choices instead of the browser companion.
-- Use plain text choices only if browser/server startup fails.
-- Do not ask the user to re-enter the topic when it is already present in the
-  request. Only ask for execution choices.
-- After the user chooses, proceed with the selected defaults without asking for
-  more input unless credentials, login, or destructive actions would be needed.
-- Never silently choose sources and start collecting.
-
-Default option gate:
-
-1. Scope:
-   - `us`: United States / North America focus
-   - `global`: global English market
-   - `compare`: cross-market comparison
-2. Sources:
-   - `public`: official/public sources only
-   - `public_community`: public sources plus forums/social/open-source signals
-   - `logged_in`: include authorized logged-in browser exports when available
-3. Depth:
-   - `quick`: fast scan
-   - `deep`: recommended balanced research
-   - `audit`: stricter evidence review
-
-## Browser Option Companion
-
-Use the scripts in this skill directory. Resolve `<skill_dir>` to the directory
-containing this `SKILL.md`.
-
-1. Start the companion server:
-
-```bash
-<skill_dir>/scripts/start-server.sh --project-dir <research-engine-checkout> --foreground
-```
-
-The command prints JSON with `url`, `screen_dir`, and `state_dir`. In Codex,
-keep this foreground command running as the active companion session until the
-selection is read, then stop it with `scripts/stop-server.sh <session_dir>`.
-Use `--background` only in shells that preserve background processes after the
-tool call exits.
-
-2. Push the option screen:
-
-```bash
-node <skill_dir>/scripts/write-options-screen.mjs \
-  --screen-dir <screen_dir> \
-  --topic "<topic from the user request>"
-```
-
-3. Open `url` for the user with the browser/in-app-browser/Chrome tool when
-   available. If no browser tool is available, print the URL and ask the user to
-   open it. The user should only need to click options and `Start research`.
-
-4. Wait for the browser selection event:
-
-```bash
-node <skill_dir>/scripts/read-options-selection.mjs \
-  --state-dir <state_dir> \
-  --wait-ms 240000
-```
-
-The script returns JSON such as:
-
-```json
-{"scope":"us","sources":"public_community","depth":"deep","ready":true}
-```
-
-If `timed_out` is true or `ready` is false, do not start collection. Ask the
-user whether to retry the companion or fall back to text choices.
+Start research directly when the topic and requested outcome are clear. Infer
+scope and source mix from the request and use balanced `deep` research by
+default. Ask a question only when a missing choice would materially change the
+result or when login, private data, paid access, credentials, or a destructive
+action requires explicit user authorization.
 
 ## Workflow
 
@@ -94,23 +20,22 @@ collection, source coverage, citations, contradiction checks, or reusable
 research artifacts.
 
 1. Locate the Research Engine checkout or installed package.
-2. Complete the mandatory browser option gate above.
-3. For normal terminal use, run the interactive entry:
+2. For normal terminal use, run the interactive entry:
 
 ```bash
 research
 research "调研 <topic>"
 ```
 
-4. Let the wizard ask for any missing terminal-only details, optional JSONL
+3. Let the wizard ask for any missing terminal-only details, optional JSONL
    evidence exports, and final read-only confirmation.
-5. For automation, tests, or explicit advanced requests, use:
+4. For automation, tests, or explicit advanced requests, use:
 
 ```bash
 research-engine run "<topic>" --pack auto --output runs
 ```
 
-6. Read `run_manifest.json`, `evidence.jsonl`, `evidence_quality.json`,
+5. Read `run_manifest.json`, `evidence.jsonl`, `evidence_quality.json`,
    `loop_contract.json`, and `loop_record.json` before summarizing results to
    the user.
 
