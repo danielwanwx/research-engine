@@ -8,9 +8,23 @@ def test_load_and_select_default_packs():
     packs = load_research_packs()
     ids = {pack["id"] for pack in packs}
 
-    assert {"generic", "memory_cycle"} <= ids
+    assert {"generic", "memory_cycle", "interview_prep"} <= ids
     assert select_research_pack("DRAM HBM shortage")["id"] == "memory_cycle"
     assert select_research_pack("restaurant lease negotiation")["id"] == "generic"
+
+
+def test_interview_prep_pack_selects_and_builds_interview_queries():
+    pack = select_research_pack("OpenAI SWE AI Platform interview loop", pack_id="interview_prep")
+    assert pack["intent"] == "interview_target_research"
+
+    auto = select_research_pack("Anthropic research engineer interview process")
+    assert auto["id"] == "interview_prep"
+
+    queries = build_pack_queries("OpenAI SWE AI Platform", pack)
+    tiers = {query["tier"] for query in queries}
+    assert {"process", "rubric", "role_depth"} <= tiers
+    assert all("{topic}" not in query["query"] for query in queries)
+    assert any("interview" in query["query"].lower() for query in queries)
 
 
 def test_empty_cwd_packs_does_not_mask_package_defaults(tmp_path, monkeypatch):

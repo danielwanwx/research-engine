@@ -72,6 +72,15 @@ research-engine run "research DRAM HBM supply shortage" --pack auto --depth deep
 research-engine run "research Lenny memory discussion" --external-evidence exports/lenny.jsonl --output runs
 ```
 
+For current job-description and interview evidence, use the complete structured target tuple. See [Structured target intelligence](docs/target-intelligence.md) for the evidence and consumer contract.
+
+```bash
+research-engine run "Stripe Staff Backend Engineer US" --pack interview_prep \
+  --target-company Stripe --target-role-family software_engineering \
+  --target-role-title "Staff Backend Engineer" --target-level staff \
+  --target-geography US --output runs
+```
+
 Check optional local capabilities:
 
 ```bash
@@ -160,6 +169,8 @@ Built-in connectors include:
 | `manual` | Pack-provided or hand-authored evidence rows |
 | `external_jsonl` | Authorized exports from logged-in tools or private collectors |
 | `web_page` | Static public page fetches from explicit seed URLs |
+| `official_job_discovery` | Target-ranked official ATS/company-careers discovery and final verification |
+| `xai_discovery` | Optional xAI Web/X citation discovery; citations remain discovery-only until re-fetched |
 | `finance_quote` | Public quote snapshots for configured tickers |
 | `github_public_search` | Public GitHub repository search fallback |
 | `agent_reach_bridge` | Optional AgentReach/upstream CLI bridge output |

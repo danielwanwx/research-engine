@@ -9,6 +9,7 @@ import sys
 
 from research_engine.doctor import render_doctor_text, run_doctor
 from research_engine.runner import ResearchEngine
+from research_engine.targets import ResearchTarget
 
 
 COMMANDS = {"run", "doctor"}
@@ -54,6 +55,19 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
         default=[],
         help="Import external evidence JSONL rows, e.g. exported logged-in browser captures.",
     )
+    parser.add_argument(
+        "--web-search-pages",
+        action="store_true",
+        help="Fetch public platform search result pages as bounded web_page seed evidence.",
+    )
+    parser.add_argument("--target-company", default="", help="Structured target company.")
+    parser.add_argument(
+        "--target-role-family", default="", help="Structured role family, e.g. software_engineering."
+    )
+    parser.add_argument("--target-role-title", default="", help="Structured target role title.")
+    parser.add_argument("--target-level", default="", help="Structured target level.")
+    parser.add_argument("--target-geography", default="", help="Structured target geography.")
+    parser.add_argument("--target-team", default="", help="Optional structured target team.")
     parser.add_argument(
         "--agent-reach",
         action="store_true",
@@ -113,7 +127,8 @@ def main(argv: list[str] | None = None) -> int:
     raw_args = list(sys.argv[1:] if argv is None else argv)
     if raw_args and raw_args[0] not in COMMANDS and not raw_args[0].startswith("-"):
         raw_args.insert(0, "run")
-    args = build_parser().parse_args(raw_args)
+    parser = build_parser()
+    args = parser.parse_args(raw_args)
     if args.command == "doctor":
         report = run_doctor(target=args.target, state_dir=args.state_dir, write=not args.no_write)
         if args.format == "json":
@@ -122,6 +137,20 @@ def main(argv: list[str] | None = None) -> int:
             print(render_doctor_text(report), end="")
         return 1 if report.get("status") == "failed" else 0
     pack_id = None if args.pack_id in {None, "", "auto"} else args.pack_id
+    target_values = {
+        "company": args.target_company,
+        "role_family": args.target_role_family,
+        "role_title": args.target_role_title,
+        "level": args.target_level,
+        "geography": args.target_geography,
+        "team": args.target_team,
+    }
+    target = None
+    if any(str(value or "").strip() for value in target_values.values()):
+        try:
+            target = ResearchTarget.from_mapping(target_values)
+        except ValueError as exc:
+            parser.error(str(exc))
     engine = ResearchEngine(
         pack_dir=args.pack_dir,
         output_dir=args.output,
@@ -137,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
         pack_id=pack_id,
         external_evidence_paths=args.external_evidence,
         platform_scope=args.platform_scope,
+        web_search_pages=args.web_search_pages,
+        target=target,
         agent_reach=args.agent_reach,
         agent_reach_command_templates=args.agent_reach_command,
     )

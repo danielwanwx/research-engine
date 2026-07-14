@@ -2,7 +2,8 @@ import json
 
 from research_engine.cli import main
 from research_engine.models import CollectionResult
-from research_engine.runner import ResearchEngine
+from research_engine.platforms import build_platform_research_plan
+from research_engine.runner import ResearchEngine, build_source_requests
 
 
 class FakeFinanceConnector:
@@ -210,6 +211,36 @@ def test_runner_marks_non_dry_run_without_sources_as_failed_no_sources(tmp_path)
         action["reason"] == "failed_no_sources" for action in loop_record["feedback_actions"]
     )
     assert "no executable sources" in " ".join(result.warnings)
+
+
+def test_build_source_requests_can_add_public_platform_search_pages():
+    pack = {"id": "generic", "sources": []}
+    platform_plan = build_platform_research_plan(
+        "OpenAI backend engineer interview loop",
+        scope="all",
+        pack=pack,
+    )
+
+    default_requests = build_source_requests(
+        pack,
+        topic="OpenAI backend engineer interview loop",
+        platform_plan=platform_plan,
+    )
+    search_requests = build_source_requests(
+        pack,
+        topic="OpenAI backend engineer interview loop",
+        platform_plan=platform_plan,
+        web_search_pages=True,
+    )
+
+    assert not default_requests
+    source_ids = {request.source_id for request in search_requests}
+    assert "platform_search_pages" in source_ids
+    search_source = next(request.source for request in search_requests if request.source_id == "platform_search_pages")
+    assert search_source["connector"] == "web_page"
+    assert search_source["source_kind"] == "platform_search_page"
+    page_publishers = {page["publisher"] for page in search_source["pages"]}
+    assert {"Reddit", "Hacker News"}.issubset(page_publishers)
 
 
 def test_runner_marks_empty_connector_results_as_failed_no_rows(tmp_path):

@@ -34,6 +34,8 @@ def build_loop_contract(
         ),
         "input_scope": {
             "topic": topic,
+            "artifact_contract": query_plan.get("artifact_contract"),
+            "target": query_plan.get("target"),
             "pack": {
                 "id": str(pack.get("id") or "generic"),
                 "profile": str(pack.get("profile") or pack.get("id") or "generic"),
@@ -174,6 +176,13 @@ def build_loop_contract(
                 "pass_condition": "Claim review is not based on zero evidence for executed runs.",
             },
             {
+                "id": "target_claim_threshold",
+                "kind": "critic",
+                "pass_condition": (
+                    "Structured targets expose baseline_only unless a current final official JD passes."
+                ),
+            },
+            {
                 "id": "connector_health",
                 "kind": "tooling",
                 "pass_condition": "Connector warnings are absent or translated into feedback actions.",
@@ -311,6 +320,7 @@ def build_loop_record(
         check_duplicate_pressure(quality_report=quality_report),
         check_conflict_review(quality_report=quality_report),
         check_claim_grounding(claim_review=claim_review, dry_run=dry_run),
+        check_target_claim_threshold(claim_review=claim_review, dry_run=dry_run),
         check_connector_health(warnings=warnings),
     ]
     feedback_actions = build_feedback_actions(
@@ -339,6 +349,7 @@ def build_loop_record(
         "critic_summary": {
             "stance": (claim_review.get("overall") or {}).get("stance"),
             "confidence": (claim_review.get("overall") or {}).get("confidence"),
+            "support_level": (claim_review.get("overall") or {}).get("support_level"),
             "action_bias": decision_brief.get("action_bias"),
             "average_quality_score": quality_report.get("average_quality_score"),
             "conflict_flag_count": len(quality_report.get("conflict_flags") or []),
@@ -588,6 +599,23 @@ def check_claim_grounding(*, claim_review: dict[str, Any], dry_run: bool) -> dic
     )
 
 
+def check_target_claim_threshold(
+    *, claim_review: dict[str, Any], dry_run: bool
+) -> dict[str, Any]:
+    if claim_review.get("schema_version") != "target_claim_review.v1":
+        return skipped("target_claim_threshold", "Run does not use the structured target contract.")
+    if dry_run:
+        return skipped("target_claim_threshold", "Dry run stopped before target claim gates.")
+    support_level = str((claim_review.get("overall") or {}).get("support_level") or "")
+    if support_level and support_level != "baseline_only":
+        return passed("target_claim_threshold", f"Target support level is {support_level}.")
+    return warn(
+        "target_claim_threshold",
+        "No current final official JD passed the complete target tuple gates.",
+        "Keep downstream coaching at baseline_only and retry official discovery later.",
+    )
+
+
 def check_connector_health(*, warnings: list[str]) -> dict[str, Any]:
     if not warnings:
         return passed("connector_health", "No connector warnings recorded.")
@@ -670,6 +698,8 @@ def stop_reason(*, status: str, dry_run: bool, check_results: list[dict[str, Any
         return f"critical_check_failed:{failed[0].get('check_id')}"
     warned = [result for result in check_results if result.get("status") == "warn"]
     if warned:
+        if any(result.get("check_id") == "target_claim_threshold" for result in warned):
+            return "target_evidence_threshold_not_met"
         return "completed_with_review_required"
     return "acceptance_checks_passed"
 

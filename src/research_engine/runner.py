@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
+import re
 from typing import Any, Callable
 
 from research_engine.artifacts import render_report, slugify, write_json, write_jsonl
@@ -13,8 +14,10 @@ from research_engine.connectors import (
     FinanceQuoteConnector,
     GitHubPublicSearchConnector,
     ManualConnector,
+    OfficialJobDiscoveryConnector,
     OpenCliBridgeConnector,
     WebPageConnector,
+    XaiDiscoveryConnector,
 )
 from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
 from research_engine.loop import build_loop_contract, build_loop_record
@@ -34,6 +37,16 @@ from research_engine.synthesis import (
     build_decision_brief,
     build_supply_demand_matrix,
 )
+from research_engine.targets import (
+    ATS_HOSTS,
+    COMMUNITY_HOSTS,
+    COMPANY_DOMAINS,
+    EXPERT_HOSTS,
+    ResearchTarget,
+    build_target_claim_review,
+    classify_target_evidence,
+)
+from urllib.parse import urlsplit
 
 
 ConnectorProvider = Any | Callable[[], Any]
@@ -44,8 +57,10 @@ DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
     FinanceQuoteConnector.connector_id: FinanceQuoteConnector,
     GitHubPublicSearchConnector.connector_id: GitHubPublicSearchConnector,
     ManualConnector.connector_id: ManualConnector,
+    OfficialJobDiscoveryConnector.connector_id: OfficialJobDiscoveryConnector,
     OpenCliBridgeConnector.connector_id: OpenCliBridgeConnector,
     WebPageConnector.connector_id: WebPageConnector,
+    XaiDiscoveryConnector.connector_id: XaiDiscoveryConnector,
 }
 
 DEPTH_MAX_RESULTS = {"quick": 3, "deep": 8, "audit": 12}
@@ -84,12 +99,15 @@ class ResearchEngine:
         slug: str | None = None,
         external_evidence_paths: list[Path] | None = None,
         platform_scope: str = "broad",
+        web_search_pages: bool = False,
+        target: ResearchTarget | dict[str, Any] | None = None,
         agent_reach: bool = False,
         agent_reach_command_templates: list[str] | None = None,
     ) -> ResearchRunResult:
         if depth not in DEPTH_MAX_RESULTS:
             supported = ", ".join(sorted(DEPTH_MAX_RESULTS))
             raise ValueError(f"unsupported depth: {depth}; supported: {supported}")
+        resolved_target = ResearchTarget.from_mapping(target) if target is not None else None
         selected_pack = select_research_pack(topic, pack_dir=self.pack_dir, pack_id=pack_id)
         resolved_date = run_date or date.today().isoformat()
         run_id = f"{resolved_date}-{slug or slugify(topic)}"
@@ -106,11 +124,15 @@ class ResearchEngine:
             external_evidence_paths=external_evidence_paths,
             platform_plan=platform_plan,
             github_public=platform_scope == "all",
+            web_search_pages=web_search_pages,
+            target=resolved_target,
             agent_reach=agent_reach,
             agent_reach_command_templates=agent_reach_command_templates,
         )
         query_plan = {
             "topic": topic,
+            "artifact_contract": "target_intelligence.v1" if resolved_target else "research_engine.v1",
+            "target": resolved_target.as_dict() if resolved_target else None,
             "pack": pack_summary(selected_pack),
             "depth": depth,
             "max_results_per_source": max_results,
@@ -118,6 +140,15 @@ class ResearchEngine:
             "platform_research_plan": platform_plan,
             "queries": build_pack_queries(topic, selected_pack),
             "collection_modes": {
+                "structured_target": resolved_target is not None,
+                "official_job_discovery": any(
+                    request.source.get("connector") == "official_job_discovery"
+                    for request in source_requests
+                ),
+                "xai_discovery": any(
+                    request.source.get("connector") == "xai_discovery"
+                    for request in source_requests
+                ),
                 "external_evidence": bool(external_evidence_paths),
                 "agent_reach": agent_reach,
                 "opencli": any(
@@ -126,6 +157,10 @@ class ResearchEngine:
                 ),
                 "github_public": any(
                     request.source.get("connector") == "github_public_search"
+                    for request in source_requests
+                ),
+                "web_search_pages": any(
+                    request.source.get("source_kind") == "platform_search_page"
                     for request in source_requests
                 ),
             },
@@ -141,7 +176,18 @@ class ResearchEngine:
                     "connector": request.source.get("connector"),
                 }
                 for request in source_requests
-            ],
+            ]
+            + (
+                [
+                    {
+                        "source_id": "target_discovery_refetch",
+                        "connector": "web_page",
+                        "conditional": True,
+                    }
+                ]
+                if resolved_target
+                else []
+            ),
         }
         loop_contract = build_loop_contract(
             topic=topic,
@@ -186,16 +232,47 @@ class ResearchEngine:
                 options=self.execution_options,
             )
             warnings.extend(execution_warnings)
+            if resolved_target:
+                discovery_rows = normalize_rows(collection_results)
+                refetch_request = build_target_refetch_request(
+                    discovery_rows,
+                    target=resolved_target,
+                    topic=topic,
+                    run_date=resolved_date,
+                    depth=depth,
+                    max_results=max_results,
+                )
+                if refetch_request:
+                    refetch_results, refetch_warnings, refetch_report = execute_collection_requests(
+                        [refetch_request],
+                        connector_providers=self.connector_factories,
+                        options=self.execution_options,
+                    )
+                    collection_results.extend(refetch_results)
+                    warnings.extend(refetch_warnings)
+                    execution_report = merge_execution_reports(execution_report, refetch_report)
         rows = normalize_rows(collection_results)
         rows, sanitation_warnings = sanitize_rows_for_artifacts(rows)
         warnings.extend(sanitation_warnings)
+        if resolved_target:
+            rows = classify_target_evidence(rows, target=resolved_target, run_date=resolved_date)
         rows, quality_report = enrich_rows_with_quality(rows, topic=topic, pack=selected_pack)
-        claim_review = build_claim_review(
-            topic=topic,
-            pack=selected_pack,
-            rows=rows,
-            warnings=[*warnings, *quality_report.get("warnings", [])],
-        )
+        if resolved_target:
+            rows = classify_target_evidence(rows, target=resolved_target, run_date=resolved_date)
+            claim_review = build_target_claim_review(
+                resolved_target,
+                rows,
+                warnings=[*warnings, *quality_report.get("warnings", [])],
+                run_date=resolved_date,
+            )
+            quality_report["target_fitness_summary"] = target_fitness_summary(rows)
+        else:
+            claim_review = build_claim_review(
+                topic=topic,
+                pack=selected_pack,
+                rows=rows,
+                warnings=[*warnings, *quality_report.get("warnings", [])],
+            )
         matrix = build_supply_demand_matrix(topic=topic, pack=selected_pack, rows=rows)
         decision_brief = build_decision_brief(
             topic=topic,
@@ -222,7 +299,11 @@ class ResearchEngine:
             "run_id": run_id,
             "topic": topic,
             "created_at": utc_now(),
+            "implementation_path": str(Path(__file__).resolve().parents[2]),
             "status": status,
+            "artifact_contract": "target_intelligence.v1" if resolved_target else "research_engine.v1",
+            "target": resolved_target.as_dict() if resolved_target else None,
+            "target_outcome": dict(claim_review.get("overall") or {}) if resolved_target else None,
             "pack": pack_summary(selected_pack),
             "warnings": warnings,
             "execution_summary": {
@@ -289,13 +370,36 @@ def build_source_requests(
     external_evidence_paths: list[Path] | None = None,
     platform_plan: list[dict[str, Any]] | None = None,
     github_public: bool = False,
+    web_search_pages: bool = False,
+    target: ResearchTarget | None = None,
     agent_reach: bool = False,
     agent_reach_command_templates: list[str] | None = None,
 ) -> list[CollectionRequest]:
     sources: list[dict[str, Any]] = []
-    for source in pack.get("sources") or []:
-        if isinstance(source, dict):
-            sources.append(dict(source))
+    if target:
+        sources.extend(
+            [
+                {
+                    "source_id": "official_job_discovery",
+                    "connector": "official_job_discovery",
+                    "target": target.as_dict(),
+                    "source_kind": "official_target_discovery",
+                    "access_mode": "public_official_endpoints",
+                },
+                {
+                    "source_id": "xai_target_discovery",
+                    "connector": "xai_discovery",
+                    "target": target.as_dict(),
+                    "timeout_seconds": 75.0,
+                    "source_kind": "dynamic_public_discovery",
+                    "access_mode": "xai_web_and_x_search",
+                },
+            ]
+        )
+    else:
+        for source in pack.get("sources") or []:
+            if isinstance(source, dict):
+                sources.append(dict(source))
     if pack.get("finance_tickers"):
         sources.append(
             {
@@ -324,6 +428,18 @@ def build_source_requests(
                 "access_mode": "public_github_api",
             }
         )
+    if web_search_pages:
+        pages = platform_search_pages(platform_plan or [])
+        if pages:
+            sources.append(
+                {
+                    "source_id": "platform_search_pages",
+                    "connector": "web_page",
+                    "pages": pages,
+                    "source_kind": "platform_search_page",
+                    "access_mode": "public_search_page_fetch",
+                }
+            )
     if external_evidence_paths:
         sources.append(
             {
@@ -352,6 +468,28 @@ def build_source_requests(
         )
         for source in sources
     ]
+
+
+def platform_search_pages(platform_plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert public platform search URLs into bounded web_page seed pages."""
+    public_platforms = {"hackernews", "reddit", "github", "youtube"}
+    pages: list[dict[str, Any]] = []
+    for row in platform_plan:
+        platform = str(row.get("platform") or "")
+        url = str(row.get("search_url") or "")
+        if not platform or platform not in public_platforms or not url:
+            continue
+        if bool(row.get("requires_login")):
+            continue
+        pages.append(
+            {
+                "url": url,
+                "title": f"{row.get('label') or platform} search",
+                "publisher": str(row.get("label") or platform),
+                "source_confidence": "medium",
+            }
+        )
+    return pages[:6]
 
 
 def build_agent_reach_bridge_source(
@@ -386,6 +524,122 @@ def github_query_from_platform_plan(platform_plan: list[dict[str, Any]]) -> str:
         if row.get("platform") == "github":
             return str(row.get("query") or "")
     return ""
+
+
+def build_target_refetch_request(
+    rows: list[dict[str, Any]],
+    *,
+    target: ResearchTarget,
+    topic: str,
+    run_date: str,
+    depth: str,
+    max_results: int,
+) -> CollectionRequest | None:
+    pages: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("connector") != "xai_discovery":
+            continue
+        url = str(row.get("url") or "")
+        if not url:
+            continue
+        source_kind, company = discovery_candidate_kind(url, target=target)
+        page = {
+            "url": url,
+            "title": str(row.get("title") or url),
+            "publisher": str(row.get("publisher") or urlsplit(url).netloc),
+            "source_confidence": "medium",
+            "source_kind": source_kind,
+            "access_mode": "public_discovery_refetch",
+            "discovered_via": str(row.get("discovered_via") or "xai_search"),
+            "discovery_source_id": str(row.get("source_id") or ""),
+        }
+        if company:
+            page["company"] = company
+        published_at = x_post_date(url)
+        if published_at:
+            page["published_at"] = published_at
+        pages.append(page)
+    if not pages:
+        return None
+    return CollectionRequest(
+        source={
+            "source_id": "target_discovery_refetch",
+            "connector": "web_page",
+            "pages": pages[:max_results],
+            "target": target.as_dict(),
+            "source_kind": "target_discovery_refetch",
+            "access_mode": "public_url_refetch",
+        },
+        topic=topic,
+        run_date=run_date,
+        depth=depth,
+        max_results=max_results,
+    )
+
+
+def discovery_candidate_kind(url: str, *, target: ResearchTarget) -> tuple[str, str]:
+    parsed = urlsplit(url)
+    host = parsed.netloc.lower().removeprefix("www.")
+    path = parsed.path.lower()
+    target_domains = COMPANY_DOMAINS.get(
+        "".join(character for character in target.company.lower() if character.isalnum()), ()
+    )
+    target_official = any(host == domain or host.endswith("." + domain) for domain in target_domains)
+    job_path = any(token in path for token in ("/job/", "/jobs/", "/listing/", "/positions/"))
+    if (target_official or host in ATS_HOSTS) and job_path:
+        return "official_job_posting", target.company
+    if target_official:
+        return "official_company_material", target.company
+    if host in COMMUNITY_HOSTS:
+        return "candidate_report", ""
+    if host in EXPERT_HOSTS:
+        return "expert_guide", ""
+    return "generic_resource", ""
+
+
+def x_post_date(url: str) -> str:
+    parsed = urlsplit(url)
+    if parsed.netloc.lower().removeprefix("www.") not in {"x.com", "twitter.com"}:
+        return ""
+    match = re.search(r"/status/(\d+)", parsed.path)
+    if not match:
+        return ""
+    try:
+        timestamp_ms = (int(match.group(1)) >> 22) + 1288834974657
+        return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return ""
+
+
+def merge_execution_reports(*reports: dict[str, Any]) -> dict[str, Any]:
+    base = dict(reports[0]) if reports else {}
+    requests = [request for report in reports for request in report.get("requests") or []]
+    status_counts: dict[str, int] = {}
+    for request in requests:
+        status = str(request.get("status") or "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+    base.update(
+        {
+            "generated_at": utc_now(),
+            "request_count": len(requests),
+            "status_counts": status_counts,
+            "requests": requests,
+        }
+    )
+    return base
+
+
+def target_fitness_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    dispositions: dict[str, int] = {}
+    reasons: dict[str, int] = {}
+    for row in rows:
+        fitness = row.get("claim_fitness") or {}
+        disposition = str(fitness.get("disposition") or "unknown")
+        dispositions[disposition] = dispositions.get(disposition, 0) + 1
+        for reason in fitness.get("rejection_reasons") or []:
+            reason = str(reason)
+            reasons[reason] = reasons.get(reason, 0) + 1
+    return {"disposition_counts": dispositions, "rejection_reason_counts": reasons}
 
 
 def normalize_rows(results: list[CollectionResult]) -> list[dict[str, Any]]:

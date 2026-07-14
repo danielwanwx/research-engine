@@ -52,8 +52,12 @@ def enrich_rows_with_quality(
         for cluster in duplicate_clusters
         for evidence_id in cluster["evidence_ids"]
     }
+    row_by_evidence_id = {str(row.get("evidence_id") or ""): row for row in enriched}
     first_by_cluster = {
-        cluster["cluster_id"]: cluster["evidence_ids"][0]
+        cluster["cluster_id"]: max(
+            cluster["evidence_ids"],
+            key=lambda evidence_id: duplicate_preference(row_by_evidence_id.get(evidence_id, {})),
+        )
         for cluster in duplicate_clusters
         if cluster.get("evidence_ids")
     }
@@ -158,6 +162,15 @@ def quality_tier(score: float) -> str:
     return "low"
 
 
+def duplicate_preference(row: dict[str, Any]) -> tuple[int, int, float]:
+    fitness = row.get("claim_fitness") or {}
+    return (
+        1 if fitness.get("disposition") == "accepted" else 0,
+        1 if row.get("is_final_page") else 0,
+        float(row.get("quality_score") or 0.0),
+    )
+
+
 def dedupe_key(row: dict[str, Any], *, index: int) -> str:
     url = str(row.get("url") or row.get("source_url") or "").strip()
     if url:
@@ -183,6 +196,10 @@ def normalize_text(text: str) -> str:
 def build_duplicate_clusters(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows_by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
+        if row.get("source_class") == "discovery_only" or (
+            row.get("claim_fitness") or {}
+        ).get("disposition") == "discovery_only":
+            continue
         rows_by_key[str(row.get("dedupe_key") or "")].append(row)
 
     clusters: list[dict[str, Any]] = []
