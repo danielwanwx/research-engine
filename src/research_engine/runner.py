@@ -10,6 +10,7 @@ from typing import Any, Callable
 from research_engine.artifacts import render_report, slugify, write_json, write_jsonl
 from research_engine.connectors import (
     AgentReachBridgeConnector,
+    AnySearchConnector,
     ExternalJsonlConnector,
     FinanceQuoteConnector,
     GitHubPublicSearchConnector,
@@ -53,6 +54,7 @@ ConnectorProvider = Any | Callable[[], Any]
 
 DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
     AgentReachBridgeConnector.connector_id: AgentReachBridgeConnector,
+    AnySearchConnector.connector_id: AnySearchConnector,
     ExternalJsonlConnector.connector_id: ExternalJsonlConnector,
     FinanceQuoteConnector.connector_id: FinanceQuoteConnector,
     GitHubPublicSearchConnector.connector_id: GitHubPublicSearchConnector,
@@ -64,6 +66,7 @@ DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
 }
 
 DEPTH_MAX_RESULTS = {"quick": 3, "deep": 8, "audit": 12}
+TARGET_DISCOVERY_CACHE_TTL_SECONDS = 86_400
 
 
 class ResearchEngine:
@@ -101,6 +104,9 @@ class ResearchEngine:
         platform_scope: str = "broad",
         web_search_pages: bool = False,
         target: ResearchTarget | dict[str, Any] | None = None,
+        anysearch_discovery: bool = False,
+        paid_discovery: bool = False,
+        paid_call_budget: int = 0,
         agent_reach: bool = False,
         agent_reach_command_templates: list[str] | None = None,
     ) -> ResearchRunResult:
@@ -126,6 +132,8 @@ class ResearchEngine:
             github_public=platform_scope == "all",
             web_search_pages=web_search_pages,
             target=resolved_target,
+            paid_discovery=False,
+            paid_call_budget=0,
             agent_reach=agent_reach,
             agent_reach_command_templates=agent_reach_command_templates,
         )
@@ -145,9 +153,9 @@ class ResearchEngine:
                     request.source.get("connector") == "official_job_discovery"
                     for request in source_requests
                 ),
-                "xai_discovery": any(
-                    request.source.get("connector") == "xai_discovery"
-                    for request in source_requests
+                "anysearch_discovery": bool(resolved_target and anysearch_discovery),
+                "xai_discovery": bool(
+                    resolved_target and paid_discovery and paid_call_budget > 0
                 ),
                 "external_evidence": bool(external_evidence_paths),
                 "agent_reach": agent_reach,
@@ -177,6 +185,29 @@ class ResearchEngine:
                 }
                 for request in source_requests
             ]
+            + (
+                [
+                    {
+                        "source_id": "anysearch_target_discovery",
+                        "connector": "anysearch_discovery",
+                        "conditional": True,
+                    }
+                ]
+                if resolved_target and anysearch_discovery
+                else []
+            )
+            + (
+                [
+                    {
+                        "source_id": "xai_target_discovery",
+                        "connector": "xai_discovery",
+                        "conditional": True,
+                        "paid": True,
+                    }
+                ]
+                if resolved_target and paid_discovery and paid_call_budget > 0
+                else []
+            )
             + (
                 [
                     {
@@ -233,6 +264,35 @@ class ResearchEngine:
             )
             warnings.extend(execution_warnings)
             if resolved_target:
+                if target_needs_supplemental_discovery(
+                    collection_results,
+                    target=resolved_target,
+                    run_date=resolved_date,
+                ):
+                    supplemental_requests = build_target_supplemental_requests(
+                        target=resolved_target,
+                        topic=topic,
+                        run_date=resolved_date,
+                        depth=depth,
+                        max_results=max_results,
+                        anysearch_discovery=anysearch_discovery,
+                        paid_discovery=paid_discovery,
+                        paid_call_budget=paid_call_budget,
+                    )
+                    if supplemental_requests:
+                        supplemental_results, supplemental_warnings, supplemental_report = (
+                            execute_collection_requests(
+                                supplemental_requests,
+                                connector_providers=self.connector_factories,
+                                options=self.execution_options,
+                            )
+                        )
+                        collection_results.extend(supplemental_results)
+                        warnings.extend(supplemental_warnings)
+                        execution_report = merge_execution_reports(
+                            execution_report,
+                            supplemental_report,
+                        )
                 discovery_rows = normalize_rows(collection_results)
                 refetch_request = build_target_refetch_request(
                     discovery_rows,
@@ -295,6 +355,11 @@ class ResearchEngine:
             claim_review=claim_review,
             decision_brief=decision_brief,
         )
+        cost_record = build_cost_record(
+            execution_report,
+            paid_discovery=paid_discovery,
+            paid_call_budget=paid_call_budget,
+        )
         manifest = {
             "run_id": run_id,
             "topic": topic,
@@ -310,6 +375,7 @@ class ResearchEngine:
                 "request_count": execution_report.get("request_count", 0),
                 "status_counts": execution_report.get("status_counts") or {},
                 "cache_enabled": bool(execution_report.get("cache_enabled")),
+                "paid_calls_attempted": cost_record["paid_calls_attempted"],
             },
             "quality_summary": {
                 "average_quality_score": quality_report.get("average_quality_score"),
@@ -325,6 +391,7 @@ class ResearchEngine:
         write_json(run_dir / "run_manifest.json", manifest)
         write_json(run_dir / "query_plan.json", query_plan)
         write_json(run_dir / "collection_execution.json", execution_report)
+        write_json(run_dir / "cost_record.json", cost_record)
         write_jsonl(run_dir / "evidence.jsonl", rows)
         write_json(run_dir / "evidence_quality.json", quality_report)
         write_json(run_dir / "claim_review.json", claim_review)
@@ -372,30 +439,38 @@ def build_source_requests(
     github_public: bool = False,
     web_search_pages: bool = False,
     target: ResearchTarget | None = None,
+    paid_discovery: bool = False,
+    paid_call_budget: int = 0,
     agent_reach: bool = False,
     agent_reach_command_templates: list[str] | None = None,
 ) -> list[CollectionRequest]:
     sources: list[dict[str, Any]] = []
     if target:
-        sources.extend(
-            [
-                {
-                    "source_id": "official_job_discovery",
-                    "connector": "official_job_discovery",
-                    "target": target.as_dict(),
-                    "source_kind": "official_target_discovery",
-                    "access_mode": "public_official_endpoints",
-                },
+        sources.append(
+            {
+                "source_id": "official_job_discovery",
+                "connector": "official_job_discovery",
+                "target": target.as_dict(),
+                "source_kind": "official_target_discovery",
+                "access_mode": "public_official_endpoints",
+                "cache_ttl_seconds": TARGET_DISCOVERY_CACHE_TTL_SECONDS,
+            }
+        )
+        if paid_discovery and paid_call_budget > 0:
+            sources.append(
                 {
                     "source_id": "xai_target_discovery",
                     "connector": "xai_discovery",
                     "target": target.as_dict(),
                     "timeout_seconds": 75.0,
                     "source_kind": "dynamic_public_discovery",
-                    "access_mode": "xai_web_and_x_search",
-                },
-            ]
-        )
+                    "access_mode": "xai_web_search",
+                    "paid_call": True,
+                    "paid_call_approved": True,
+                    "paid_call_budget": int(paid_call_budget),
+                    "cache_ttl_seconds": TARGET_DISCOVERY_CACHE_TTL_SECONDS,
+                }
+            )
     else:
         for source in pack.get("sources") or []:
             if isinstance(source, dict):
@@ -470,6 +545,76 @@ def build_source_requests(
     ]
 
 
+def build_target_supplemental_requests(
+    *,
+    target: ResearchTarget,
+    topic: str,
+    run_date: str,
+    depth: str,
+    max_results: int,
+    anysearch_discovery: bool,
+    paid_discovery: bool,
+    paid_call_budget: int,
+) -> list[CollectionRequest]:
+    sources: list[dict[str, Any]] = []
+    if anysearch_discovery:
+        sources.append(
+            {
+                "source_id": "anysearch_target_discovery",
+                "connector": "anysearch_discovery",
+                "target": target.as_dict(),
+                "query_intent": "official_role",
+                "timeout_seconds": 20.0,
+                "source_kind": "dynamic_public_discovery",
+                "access_mode": "anysearch_public_search",
+                "external_discovery_approved": True,
+                "cache_ttl_seconds": TARGET_DISCOVERY_CACHE_TTL_SECONDS,
+            }
+        )
+    if paid_discovery and paid_call_budget > 0:
+        sources.append(
+            {
+                "source_id": "xai_target_discovery",
+                "connector": "xai_discovery",
+                "target": target.as_dict(),
+                "timeout_seconds": 45.0,
+                "source_kind": "dynamic_public_discovery",
+                "access_mode": "xai_web_search",
+                "paid_call": True,
+                "paid_call_approved": True,
+                "paid_call_budget": int(paid_call_budget),
+                "cache_ttl_seconds": TARGET_DISCOVERY_CACHE_TTL_SECONDS,
+            }
+        )
+    return [
+        CollectionRequest(
+            source=source,
+            topic=topic,
+            run_date=run_date,
+            depth=depth,
+            max_results=max_results,
+        )
+        for source in sources
+    ]
+
+
+def target_needs_supplemental_discovery(
+    results: list[CollectionResult],
+    *,
+    target: ResearchTarget,
+    run_date: str,
+) -> bool:
+    rows = classify_target_evidence(
+        normalize_rows(results),
+        target=target,
+        run_date=run_date,
+    )
+    return not any(
+        "current_official_role" in (row.get("claim_fitness") or {}).get("eligible_claims", [])
+        for row in rows
+    )
+
+
 def platform_search_pages(platform_plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert public platform search URLs into bounded web_page seed pages."""
     public_platforms = {"hackernews", "reddit", "github", "youtube"}
@@ -537,7 +682,7 @@ def build_target_refetch_request(
 ) -> CollectionRequest | None:
     pages: list[dict[str, Any]] = []
     for row in rows:
-        if row.get("connector") != "xai_discovery":
+        if row.get("connector") not in {"anysearch_discovery", "xai_discovery"}:
             continue
         url = str(row.get("url") or "")
         if not url:
@@ -569,6 +714,7 @@ def build_target_refetch_request(
             "target": target.as_dict(),
             "source_kind": "target_discovery_refetch",
             "access_mode": "public_url_refetch",
+            "cache_ttl_seconds": TARGET_DISCOVERY_CACHE_TTL_SECONDS,
         },
         topic=topic,
         run_date=run_date,
@@ -627,6 +773,62 @@ def merge_execution_reports(*reports: dict[str, Any]) -> dict[str, Any]:
         }
     )
     return base
+
+
+def build_cost_record(
+    execution_report: dict[str, Any],
+    *,
+    paid_discovery: bool,
+    paid_call_budget: int,
+) -> dict[str, Any]:
+    attempts = 0
+    completed = 0
+    provider_usage: list[dict[str, Any]] = []
+    stop_reasons: list[str] = []
+    for record in execution_report.get("requests") or []:
+        if str(record.get("connector") or "") != "xai_discovery":
+            continue
+        metadata = dict(record.get("provider_metadata") or {})
+        if "paid_calls_attempted" in metadata:
+            record_attempts = int(metadata.get("paid_calls_attempted") or 0)
+            record_completed = int(metadata.get("paid_calls_completed") or 0)
+        elif str(record.get("status") or "") in {"failed", "timeout"}:
+            record_attempts = int(record.get("attempts") or 0)
+            record_completed = 0
+        else:
+            record_attempts = 0
+            record_completed = 0
+        attempts += record_attempts
+        completed += record_completed
+        reason = str(metadata.get("stop_reason") or "")
+        if reason:
+            stop_reasons.append(reason)
+        if record_attempts:
+            provider_usage.append(
+                {
+                    "provider": "xai",
+                    "model": str(metadata.get("model") or ""),
+                    "usage": dict(metadata.get("usage") or {"status": "unknown"}),
+                }
+            )
+    enabled = bool(paid_discovery and paid_call_budget > 0)
+    if not enabled:
+        stop_reason = "paid_discovery_disabled"
+    elif attempts:
+        stop_reason = "paid_call_completed" if completed else "paid_call_failed"
+    elif stop_reasons:
+        stop_reason = stop_reasons[0]
+    else:
+        stop_reason = "paid_discovery_not_needed"
+    return {
+        "paid_calls_allowed": max(0, int(paid_call_budget)) if enabled else 0,
+        "paid_calls_attempted": attempts,
+        "paid_calls_completed": completed,
+        "provider_usage": provider_usage,
+        "estimated_cost_usd": None,
+        "budget_status": "within_budget" if enabled else "not_enabled",
+        "stop_reason": stop_reason,
+    }
 
 
 def target_fitness_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:

@@ -81,6 +81,44 @@ research-engine run "Stripe Staff Backend Engineer US" --pack interview_prep \
   --target-geography US --output runs
 ```
 
+### Cost-safe target discovery
+
+Official Careers and ATS sources always run first. Add `--anysearch-discovery`
+to use AnySearch only when the official result is insufficient. AnySearch is a
+hosted discovery service; the connector uses its JSON-RPC/MCP endpoint directly
+and treats every returned URL as `discovery_only` until Research Engine
+re-fetches and validates it.
+
+```bash
+research-engine run "Stripe Staff Backend Engineer US" --pack interview_prep \
+  --target-company Stripe --target-role-family software_engineering \
+  --target-role-title "Staff Backend Engineer" --target-level staff \
+  --target-geography US --anysearch-discovery \
+  --cache-dir .cache/target-discovery --output runs
+```
+
+`ANYSEARCH_API_KEY` is optional. Candidate resumes, names, stories, and scores
+are never sent to AnySearch. Target discovery cache entries expire after 24
+hours, so the same target can reuse results without keeping stale job evidence
+indefinitely.
+
+xAI discovery is off by default. A key alone cannot enable it. The last-resort
+path requires both an explicit flag and a positive per-run budget:
+
+```bash
+research-engine run "Stripe Staff Backend Engineer US" --pack interview_prep \
+  --target-company Stripe --target-role-family software_engineering \
+  --target-role-title "Staff Backend Engineer" --target-level staff \
+  --target-geography US --paid-discovery --paid-call-budget 1 \
+  --cache-dir .cache/target-discovery --output runs
+```
+
+Paid connectors make one attempt and never retry or fall back to a second
+endpoint. Every run writes `cost_record.json`; missing provider usage is stored
+as unknown rather than zero. Set `RESEARCH_ENGINE_EXTERNAL_CALLS_DISABLED=1`
+to stop AnySearch and paid discovery at their transport boundaries. Pytest
+blocks real transports and requires injected fakes.
+
 Check optional local capabilities:
 
 ```bash
@@ -120,6 +158,7 @@ runs/<timestamp-or-topic>/
 ├── run_manifest.json
 ├── query_plan.json
 ├── collection_execution.json
+├── cost_record.json
 ├── evidence.jsonl
 ├── evidence_quality.json
 ├── claim_review.json
@@ -137,6 +176,8 @@ Important files:
   directional conflict flags.
 - `collection_execution.json` records connector status, retries, warnings,
   cache hits, and row counts.
+- `cost_record.json` records the paid-call budget, attempts, available usage,
+  and stop reason without persisting credentials.
 - `loop_contract.json` defines the research loop: goal, source scope, checks,
   feedback rules, records, stop conditions, and human gates.
 - `loop_record.json` records what passed, warned, failed, or stopped the run.

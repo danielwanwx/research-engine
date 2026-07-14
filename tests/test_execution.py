@@ -1,3 +1,6 @@
+import os
+import time
+
 from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
 from research_engine.models import CollectionRequest, CollectionResult
 
@@ -77,3 +80,38 @@ def test_execution_uses_cache_when_enabled(tmp_path):
     assert first_results[0].rows == second_results[0].rows
     assert first_report["requests"][0]["cache_hit"] is False
     assert second_report["requests"][0]["cache_hit"] is True
+
+
+def test_execution_refreshes_an_expired_bounded_cache_entry(tmp_path):
+    CountingConnector.calls = 0
+    request = CollectionRequest(
+        source={
+            "source_id": "anysearch_target_discovery",
+            "connector": "anysearch_discovery",
+            "cache_ttl_seconds": 86_400,
+        },
+        topic="target",
+        run_date="2026-07-14",
+        depth="quick",
+        max_results=3,
+    )
+    cache_dir = tmp_path / "cache"
+    options = ConnectorExecutionOptions(cache_dir=cache_dir)
+
+    execute_collection_requests(
+        [request],
+        connector_providers={"anysearch_discovery": CountingConnector},
+        options=options,
+    )
+    cache_file = next(cache_dir.glob("*.json"))
+    expired = time.time() - 86_401
+    os.utime(cache_file, (expired, expired))
+
+    _, _, report = execute_collection_requests(
+        [request],
+        connector_providers={"anysearch_discovery": CountingConnector},
+        options=options,
+    )
+
+    assert CountingConnector.calls == 2
+    assert report["requests"][0]["cache_hit"] is False

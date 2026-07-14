@@ -69,6 +69,22 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--target-geography", default="", help="Structured target geography.")
     parser.add_argument("--target-team", default="", help="Optional structured target team.")
     parser.add_argument(
+        "--anysearch-discovery",
+        action="store_true",
+        help="Use AnySearch only when official target discovery is insufficient.",
+    )
+    parser.add_argument(
+        "--paid-discovery",
+        action="store_true",
+        help="Explicitly allow the last-resort paid discovery connector.",
+    )
+    parser.add_argument(
+        "--paid-call-budget",
+        type=int,
+        default=0,
+        help="Maximum paid discovery calls for this run; default 0.",
+    )
+    parser.add_argument(
         "--agent-reach",
         action="store_true",
         help="Run optional AgentReach/upstream CLI bridge sources.",
@@ -168,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
         platform_scope=args.platform_scope,
         web_search_pages=args.web_search_pages,
         target=target,
+        anysearch_discovery=args.anysearch_discovery,
+        paid_discovery=args.paid_discovery,
+        paid_call_budget=max(0, args.paid_call_budget),
         agent_reach=args.agent_reach,
         agent_reach_command_templates=args.agent_reach_command,
     )
