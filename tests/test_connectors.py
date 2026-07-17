@@ -2,15 +2,15 @@ import json
 
 from research_engine.connectors.external import ExternalJsonlConnector
 from research_engine.connectors.finance import FinanceQuoteConnector
-from research_engine.connectors.web import WebPageConnector
+from research_engine.connectors.web import FetchedPage, WebPageConnector
 from research_engine.models import CollectionRequest
 
 
 def test_web_connector_turns_timeout_into_warning(monkeypatch):
-    def timeout_fetch(url):
+    def timeout_fetch(url, **_kwargs):
         raise TimeoutError("simulated timeout")
 
-    monkeypatch.setattr("research_engine.connectors.web.fetch_text", timeout_fetch)
+    monkeypatch.setattr("research_engine.connectors.web.fetch_page_result", timeout_fetch)
     result = WebPageConnector().collect(
         CollectionRequest(
             source={
@@ -26,6 +26,67 @@ def test_web_connector_turns_timeout_into_warning(monkeypatch):
 
     assert result.rows == []
     assert "simulated timeout" in result.warnings[0]
+
+
+def test_web_connector_surfaces_robots_denied_status():
+    denied = FetchedPage(
+        text="",
+        final_url="https://example.com/private",
+        http_status=None,
+        content_type="",
+        content_valid=False,
+        content_invalid_reasons=("robots_denied",),
+        network_status="robots_denied",
+        network_telemetry={"robots_status": "denied", "robots_cache_hit": False},
+    )
+    result = WebPageConnector(fetcher=lambda _url: denied).collect(
+        CollectionRequest(
+            source={
+                "source_id": "web_seed_pages",
+                "pages": [{"url": "https://example.com/private", "title": "Private"}],
+            },
+            topic="robots policy",
+            run_date="2026-07-16",
+            depth="quick",
+            max_results=1,
+        )
+    )
+
+    assert result.metadata["status"] == "robots_denied"
+    assert result.rows[0]["network_status"] == "robots_denied"
+    assert result.rows[0]["network_telemetry"]["robots_status"] == "denied"
+
+
+def test_web_connector_keeps_invalid_row_with_transport_metadata(monkeypatch):
+    monkeypatch.setattr(
+        "research_engine.connectors.web.fetch_page_result",
+        lambda url, **_kwargs: FetchedPage(
+            text="",
+            final_url=url,
+            http_status=200,
+            content_type="application/pdf",
+            content_valid=False,
+            content_invalid_reasons=("unsupported_content_type_application/pdf",),
+        ),
+    )
+
+    result = WebPageConnector().collect(
+        CollectionRequest(
+            source={
+                "source_id": "web_seed_pages",
+                "pages": [{"url": "https://example.com/report.pdf", "title": "PDF"}],
+            },
+            topic="pdf audit",
+            run_date="2026-07-16",
+            depth="quick",
+            max_results=3,
+        )
+    )
+
+    assert result.rows[0]["content_valid"] is False
+    assert result.rows[0]["content_type"] == "application/pdf"
+    assert result.rows[0]["is_final_page"] is False
+    assert "unsupported_content_type_application/pdf" in result.warnings[0]
 
 
 def test_finance_connector_turns_timeout_into_warning(monkeypatch):

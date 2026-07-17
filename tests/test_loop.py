@@ -51,6 +51,23 @@ def test_generic_evidence_requires_analysis_before_decision_ready():
     assert any(action["reason"] == "claim_grounding" for action in record["feedback_actions"])
 
 
+def test_unproven_or_conflicted_claims_require_review():
+    for stance in ("needs_more_evidence", "conflicted"):
+        record = build_loop_record(
+            **base_loop_kwargs(
+                claim_review={"overall": {"stance": stance, "confidence": "medium"}}
+            )
+        )
+
+        claim_grounding = next(
+            result
+            for result in record["check_results"]
+            if result["check_id"] == "claim_grounding"
+        )
+        assert claim_grounding["status"] == "warn"
+        assert record["loop_status"] == "complete_with_review_required"
+
+
 def test_loop_record_includes_domain_agent_loop_requirements():
     record = build_loop_record(**base_loop_kwargs())
 

@@ -1,0 +1,182 @@
+{
+  "generated_at": "2026-07-16T20:12:14.908065+00:00",
+  "target": "all",
+  "status": "complete_with_warnings",
+  "python": {
+    "version": "3.14.3",
+    "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "implementation": "CPython"
+  },
+  "summary": {
+    "check_count": 11,
+    "available_count": 4,
+    "required_failure_count": 0,
+    "optional_missing_count": 7
+  },
+  "checks": [
+    {
+      "id": "python",
+      "label": "Python >=3.10",
+      "available": true,
+      "version": "3.14.3",
+      "path": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+      "warning": "",
+      "metadata": {
+        "required": true,
+        "group": "core"
+      }
+    },
+    {
+      "id": "python_import:research_engine",
+      "label": "Research Engine package",
+      "available": true,
+      "version": "",
+      "path": "/Users/danielwan/Project/research-engine/src/research_engine/__init__.py",
+      "warning": "",
+      "metadata": {
+        "required": true,
+        "group": "python"
+      }
+    },
+    {
+      "id": "command:agent-reach",
+      "label": "AgentReach installer/status CLI",
+      "available": false,
+      "version": "",
+      "path": "",
+      "warning": "Command not found on PATH: agent-reach",
+      "metadata": {
+        "required": false,
+        "group": "agentreach",
+        "command": "agent-reach",
+        "connector_ids": [
+          "agent_reach_bridge"
+        ]
+      }
+    },
+    {
+      "id": "command:twitter",
+      "label": "AgentReach Twitter/X CLI",
+      "available": false,
+      "version": "",
+      "path": "",
+      "warning": "Command not found on PATH: twitter",
+      "metadata": {
+        "required": false,
+        "group": "agentreach",
+        "command": "twitter",
+        "connector_ids": [
+          "agent_reach_bridge"
+        ]
+      }
+    },
+    {
+      "id": "command:rdt",
+      "label": "AgentReach Reddit CLI",
+      "available": false,
+      "version": "",
+      "path": "",
+      "warning": "Command not found on PATH: rdt",
+      "metadata": {
+        "required": false,
+        "group": "agentreach",
+        "command": "rdt",
+        "connector_ids": [
+          "agent_reach_bridge"
+        ]
+      }
+    },
+    {
+      "id": "command:xhs",
+      "label": "AgentReach Xiaohongshu CLI",
+      "available": false,
+      "version": "",
+      "path": "",
+      "warning": "Command not found on PATH: xhs",
+      "metadata": {
+        "required": false,
+        "group": "agentreach",
+        "command": "xhs",
+        "connector_ids": [
+          "agent_reach_bridge"
+        ]
+      }
+    },
+    {
+      "id": "command:xq",
+      "label": "AgentReach Xueqiu CLI",
+      "available": false,
+      "version": "",
+      "path": "",
+      "warning": "Command not found on PATH: xq",
+      "metadata": {
+        "required": false,
+        "group": "agentreach",
+        "command": "xq",
+        "connector_ids": [
+          "agent_reach_bridge"
+        ]
+      }
+    },
+    {
+      "id": "command:yt-dlp",
+      "label": "YouTube downloader/search CLI",
+      "available": false,
+      "version": "",
+      "path": "",
+      "warning": "Command not found on PATH: yt-dlp",
+      "metadata": {
+        "required": false,
+        "group": "agentreach",
+        "command": "yt-dlp",
+        "connector_ids": [
+          "agent_reach_bridge"
+        ]
+      }
+    },
+    {
+      "id": "command:gh",
+      "label": "GitHub CLI",
+      "available": true,
+      "version": "gh version 2.94.0 (2026-06-10)",
+      "path": "/opt/homebrew/bin/gh",
+      "warning": "",
+      "metadata": {
+        "required": false,
+        "group": "agentreach",
+        "command": "gh",
+        "connector_ids": [
+          "agent_reach_bridge"
+        ]
+      }
+    },
+    {
+      "id": "command:opencli",
+      "label": "OpenCLI browser workflow CLI",
+      "available": false,
+      "version": "",
+      "path": "",
+      "warning": "Command not found on PATH: opencli",
+      "metadata": {
+        "required": false,
+        "group": "opencli",
+        "command": "opencli",
+        "connector_ids": [
+          "opencli_bridge"
+        ]
+      }
+    },
+    {
+      "id": "python_import:playwright",
+      "label": "Playwright browser renderer",
+      "available": true,
+      "version": "",
+      "path": "/opt/homebrew/lib/python3.14/site-packages/playwright/__init__.py",
+      "warning": "",
+      "metadata": {
+        "required": false,
+        "group": "python"
+      }
+    }
+  ]
+}

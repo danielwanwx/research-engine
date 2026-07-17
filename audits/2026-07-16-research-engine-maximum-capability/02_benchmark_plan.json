@@ -1,0 +1,126 @@
+{
+  "designed_at": "2026-07-16T13:20:00-07:00",
+  "designed_before_execution": true,
+  "global_limits": {
+    "engine_invocations_per_benchmark": "1 primary + at most 1 repair pass",
+    "wall_clock_per_benchmark_minutes": 10,
+    "source_timeout_seconds": 30,
+    "repair_pass_rule": "allowed once, only on failed_no_sources / failed_no_rows / zero relevant rows; before/after preserved"
+  },
+  "execution_protocol": [
+    "run through the official CLI (PYTHONPATH=src python3 -m research_engine.cli run ...), deepest applicable mode",
+    "save full command, env facts, elapsed time in benchmarks/<ID>/notes.md and commands.jsonl",
+    "engine writes run dirs under runs/ (its native output path); audit analysis stays in audits/",
+    "inspect run_manifest, query_plan, collection_execution, evidence.jsonl, evidence_quality, claim_review, decision_brief, loop_contract, loop_record, research_report",
+    "compare planned vs executed vs returned sources; check timestamps, URLs, duplicates, conflicts, truncation, staleness, unsupported claims",
+    "any evidence gathered outside the engine is External Fallback: label it, record what engine capability gap forced it"
+  ],
+  "benchmarks": [
+    {
+      "id": "B1",
+      "title": "Fast-moving market research: DRAM/HBM memory pricing as of 2026-07-16",
+      "user_question": "What is the current state of DRAM/HBM pricing and supply tightness, with real-time prices and primary announcements?",
+      "decision_outcome": "Investor-style brief: is supply tightness thesis still supported by CURRENT evidence?",
+      "command": "run 'DRAM HBM memory contract price supply July 2026' --pack auto --depth deep --platform-scope all --web-search-pages --source-timeout-seconds 30",
+      "freshness_window_days": 30,
+      "authoritative_source_classes": ["exchange/quote data", "vendor IR releases", "market research (TrendForce et al.)"],
+      "min_source_diversity": "3 independent domains",
+      "expected_artifacts": "full 11-file bundle; finance rows with prices; seed pages fetched",
+      "repair_trigger": "zero rows or all web seeds fail",
+      "success_rubric": "5=current prices + >=2 primary announcements inside window + stale seeds flagged; 3=prices but seed evidence stale and NOT flagged; 1=only quotes; 0=no rows",
+      "known_design_probe": "memory_cycle pack seeds are dated 2026-03/06 — does the engine detect that seed evidence is older than the freshness window?"
+    },
+    {
+      "id": "B2",
+      "title": "Deep technical research: vLLM vs SGLang inference engine architecture",
+      "user_question": "Compare vLLM and SGLang: architecture, scheduling approach, current release lines, adoption.",
+      "decision_outcome": "Engineering choice memo grounded in official docs/repos/papers.",
+      "command": "run 'vLLM SGLang LLM inference engine architecture comparison' --pack auto --depth audit --platform-scope all --web-search-pages --source-timeout-seconds 30",
+      "freshness_window_days": 180,
+      "authoritative_source_classes": ["official GitHub repos/releases", "official docs", "papers"],
+      "min_source_diversity": "3 domains incl. github.com + at least one docs site",
+      "expected_artifacts": "github_public_search rows; platform search page rows",
+      "repair_trigger": "no github rows or zero relevant rows",
+      "success_rubric": "5=both projects' repos + versions + architectural facts extractable; 3=repos found but no versions/architecture text; 1=irrelevant repos; 0=no rows"
+    },
+    {
+      "id": "B3",
+      "title": "Contested topic: DRAM oversupply vs shortage outlook",
+      "user_question": "Is memory heading to oversupply or continued shortage into 2027? Both evidence chains required.",
+      "decision_outcome": "Support and opposition chains with calibrated confidence.",
+      "command": "run 'DRAM oversupply glut inventory correction versus shortage tight supply 2027 outlook' --pack auto --depth deep --web-search-pages --source-timeout-seconds 30",
+      "freshness_window_days": 90,
+      "authoritative_source_classes": ["market research", "vendor guidance", "financial press"],
+      "min_source_diversity": "2 per side",
+      "expected_artifacts": "evidence_quality.conflict_flags populated (availability_pressure set); claim_review reflecting both directions",
+      "repair_trigger": "zero rows",
+      "success_rubric": "5=conflict flag with both chains + confidence reflects conflict; 3=conflict flagged but synthesis ignores it; 1=one-sided evidence, no flag; 0=no rows",
+      "known_design_probe": "does directional term co-occurrence produce a real support/oppose chain or just flag noise?"
+    },
+    {
+      "id": "B4",
+      "title": "Niche topic, no pack/seed: JSON Canvas file format adoption",
+      "user_question": "What is the JSON Canvas spec (from Obsidian), who has adopted it, current status?",
+      "decision_outcome": "Adoption assessment for a niche open spec.",
+      "command_pass1": "run 'JSON Canvas open file format spec adoption' --pack auto --depth deep --source-timeout-seconds 30",
+      "command_repair": "same + --platform-scope all --web-search-pages (single bounded repair)",
+      "freshness_window_days": 365,
+      "authoritative_source_classes": ["jsoncanvas.org / obsidianmd github", "adopting projects"],
+      "min_source_diversity": "2 domains",
+      "expected_artifacts": "pass1 expected failed_no_sources (generic pack has zero sources) — that outcome is itself the autonomous-discovery measurement",
+      "repair_trigger": "failed_no_sources on pass1 (expected)",
+      "success_rubric": "5=repair finds spec repo + adopters; 3=finds spec repo only; 1=irrelevant rows; 0=both passes empty"
+    },
+    {
+      "id": "B5",
+      "title": "GitHub ecosystem survey: open-source deep research agents",
+      "user_question": "What are the leading open-source deep-research agent frameworks; maintenance, license, releases?",
+      "decision_outcome": "Discovery seed list for Phase 3 with maintenance/license signals.",
+      "command": "run 'open source deep research agent framework' --pack auto --depth audit --platform-scope all --source-timeout-seconds 30",
+      "freshness_window_days": 365,
+      "authoritative_source_classes": ["github repos"],
+      "min_source_diversity": "n/a (github-centric by design)",
+      "expected_artifacts": "github_public_search rows with stars/forks/language; NO license/release/issue fields (known schema gap to verify)",
+      "repair_trigger": "zero github rows",
+      "success_rubric": "5=relevant repos + license + releases + maintenance; 3=relevant repos, metrics only; 1=irrelevant repos (query normalization strips 'open source'/'repo' — probe); 0=no rows"
+    },
+    {
+      "id": "B6",
+      "title": "Adversarial sources: JS-heavy, blocked, 404, malformed, PDF",
+      "user_question": "Fetch a seed set designed to fail: x.com search (bot-gated), a JS-only SPA, a 404, an invalid TLD, a PDF URL.",
+      "decision_outcome": "Failure transparency: are failures visible, honest, and non-blocking?",
+      "method": "custom audit-only pack via --pack-dir audits/.../fixtures/packs (does not touch repo packs/)",
+      "command": "run 'adversarial fetch degradation audit' --pack b6_adversarial --pack-dir <audit>/fixtures/packs --depth deep --source-timeout-seconds 30",
+      "freshness_window_days": null,
+      "authoritative_source_classes": ["n/a"],
+      "min_source_diversity": "n/a",
+      "expected_artifacts": "collection_execution with per-source failures; access_blocked flags; PDF garbage-text probe",
+      "repair_trigger": "none (failures are the point)",
+      "success_rubric": "5=every failure individually visible w/ reason + run status honest; 3=failures visible but status misleading (e.g. 'complete' with 90% blocked); 1=silent drops; 0=crash"
+    },
+    {
+      "id": "B7",
+      "title": "Longitudinal rerun: cache, freshness, diff",
+      "user_question": "Re-run B1's topic twice with --cache-dir: does the second run reuse cache, detect changes, or diff?",
+      "decision_outcome": "Incremental-update capability measurement.",
+      "command": "2x run 'DRAM HBM memory contract price supply July 2026' --pack auto --depth quick --cache-dir <audit>/fixtures/cache --source-timeout-seconds 30",
+      "freshness_window_days": 0,
+      "expected_artifacts": "run2 collection_execution.status_counts.cache_hit > 0; no diff artifact exists (expected capability gap)",
+      "repair_trigger": "none",
+      "success_rubric": "5=cache hits + diff/freshness policy; 3=cache hits, no diff (predicted); 1=no cache hits despite flag; 0=error",
+      "known_design_probe": "cache key includes run_date — same-day rerun should hit, cross-day never; no TTL"
+    },
+    {
+      "id": "B8",
+      "title": "Mixed formats: authorized JSONL + PDF + HTML table",
+      "user_question": "Combine tests/fixtures/stripe_false_positive_evidence.jsonl (pre-existing, authorized) with a public PDF and a table-heavy HTML page.",
+      "decision_outcome": "Format handling: JSONL import fidelity, PDF text extraction, table structure preservation.",
+      "command": "run 'mixed format evidence handling audit' --pack b8_mixed --pack-dir <audit>/fixtures/packs --external-evidence tests/fixtures/stripe_false_positive_evidence.jsonl --depth deep --source-timeout-seconds 30",
+      "freshness_window_days": null,
+      "expected_artifacts": "external_jsonl rows normalized; PDF row expected garbage/empty (probe); table flattened to linear text (probe)",
+      "repair_trigger": "none",
+      "success_rubric": "5=all formats structured; 3=JSONL ok, PDF/table degraded but flagged; 1=degraded silently; 0=import fails",
+      "permissions_note": "uses only a pre-existing repo fixture read-only + public URLs; no new permissions"
+    }
+  ]
+}

@@ -20,10 +20,10 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = []
+dependencies = ["reportlab>=4.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.8"]
+dev = ["pypdf>=5.0", "pytest>=8.0", "ruff>=0.8"]
 
 [project.scripts]
 research = "research_engine.cli:research_main"

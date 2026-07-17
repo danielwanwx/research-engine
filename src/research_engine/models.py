@@ -45,6 +45,8 @@ class ResearchRunResult:
     loop_status: str = ""
     stop_reason: str = ""
     feedback_action_count: int = 0
+    pdf_report_path: str = ""
+    pdf_report_status: str = ""
     warnings: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:

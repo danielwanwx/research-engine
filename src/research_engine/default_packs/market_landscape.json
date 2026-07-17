@@ -1,0 +1,77 @@
+{
+  "id": "market_landscape",
+  "label": "Generic market landscape research",
+  "profile": "market_landscape",
+  "intent": "market_landscape_research",
+  "match_terms": [
+    "market landscape",
+    "competitive landscape",
+    "market map",
+    "vendor landscape",
+    "industry landscape",
+    "market sizing",
+    "market size"
+  ],
+  "min_match_score": 1,
+  "claim_context_fields": ["definition", "geography", "as_of"],
+  "facets": [
+    {
+      "id": "market_definition",
+      "query_templates": ["{topic} market definition"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": null
+    },
+    {
+      "id": "companies_products",
+      "query_templates": ["{topic} companies products official"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": 365
+    },
+    {
+      "id": "pricing",
+      "query_templates": ["{topic} official pricing monetization"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": 180
+    },
+    {
+      "id": "demand",
+      "query_templates": ["{topic} demand signals"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": 180
+    },
+    {
+      "id": "competition",
+      "query_templates": ["{topic} competition alternatives"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": 365
+    },
+    {
+      "id": "constraints",
+      "query_templates": ["{topic} regulation constraints"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": 365
+    },
+    {
+      "id": "contrary_evidence",
+      "query_templates": ["{topic} risks contrary evidence"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": 365
+    }
+  ],
+  "source_strategy": {
+    "primary": ["official_vendor", "regulator", "filing"],
+    "independent": ["customer", "industry_analysis", "contrary_evidence"]
+  },
+  "sources": [],
+  "claim_specs": [],
+  "matrix_nodes": [],
+  "matrix_entities": {},
+  "decision_rules": {}
+}

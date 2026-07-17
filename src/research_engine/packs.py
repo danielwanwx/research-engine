@@ -11,6 +11,25 @@ from typing import Any
 DEFAULT_PACK_ID = "generic"
 PROJECT_PACK_DIR = Path.cwd() / "packs"
 PACKAGE_PACK_DIR = Path(__file__).resolve().parent / "default_packs"
+PROFILE_REQUIRED_FACETS: dict[str, frozenset[str]] = {
+    "technical": frozenset(
+        {"official_docs", "repositories", "releases", "architecture", "performance", "limitations"}
+    ),
+    "market_landscape": frozenset(
+        {
+            "market_definition",
+            "companies_products",
+            "pricing",
+            "demand",
+            "competition",
+            "constraints",
+            "contrary_evidence",
+        }
+    ),
+    "job_market": frozenset(
+        {"active_openings", "company_coverage", "role_terms", "geography", "skills", "compensation"}
+    ),
+}
 
 
 def load_research_packs(pack_dir: Path | None = None) -> list[dict[str, Any]]:
@@ -63,6 +82,17 @@ def pack_summary(pack: dict[str, Any]) -> dict[str, str]:
 
 
 def build_pack_queries(topic: str, pack: dict[str, Any]) -> list[dict[str, str]]:
+    facet_queries = [
+        {
+            "tier": str(facet.get("id") or facet.get("facet_id") or "public_connector"),
+            "query": str(template).format(topic=topic),
+        }
+        for facet in pack.get("facets") or []
+        if isinstance(facet, dict)
+        for template in _facet_templates(facet)
+    ]
+    if facet_queries:
+        return facet_queries
     templates = pack.get("query_templates") or []
     if not templates:
         return [{"tier": "public_connector", "query": topic}]
@@ -78,7 +108,7 @@ def build_pack_queries(topic: str, pack: dict[str, Any]) -> list[dict[str, str]]
 
 def score_pack_match(topic: str, pack: dict[str, Any]) -> int:
     return sum(
-        1
+        max(1, len(str(term).split()))
         for term in pack.get("match_terms") or []
         if topic_matches_term(topic, str(term))
     )
@@ -103,11 +133,60 @@ def normalize_pack(payload: dict[str, Any], *, path: Path | None) -> dict[str, A
     pack.setdefault("intent", "general_research")
     pack.setdefault("match_terms", [])
     pack.setdefault("query_templates", [])
+    pack.setdefault("facets", [])
     pack.setdefault("sources", [])
     pack.setdefault("claim_specs", [])
     pack.setdefault("matrix_nodes", [])
     pack.setdefault("matrix_entities", {})
     pack.setdefault("decision_rules", {})
+    validate_pack(pack, path=path)
     if path:
         pack["_pack_path"] = str(path)
     return pack
+
+
+def validate_pack(pack: dict[str, Any], *, path: Path | None = None) -> None:
+    """Reject malformed profile contracts before they reach planning."""
+
+    prefix = f"{path}: " if path else ""
+    pack_id = str(pack.get("id") or "").strip()
+    if not pack_id:
+        raise ValueError(prefix + "pack id must be non-empty")
+    facets = pack.get("facets")
+    if not isinstance(facets, list):
+        raise ValueError(prefix + "pack facets must be a list")
+
+    facet_ids: list[str] = []
+    for facet in facets:
+        if not isinstance(facet, dict):
+            raise ValueError(prefix + "pack facets must contain objects")
+        facet_id = str(facet.get("id") or facet.get("facet_id") or "").strip()
+        if not facet_id:
+            raise ValueError(prefix + "facet id must be non-empty")
+        facet_ids.append(facet_id)
+        if not _facet_templates(facet):
+            raise ValueError(prefix + f"facet {facet_id} requires query_templates")
+        source_types = facet.get("source_types")
+        if not isinstance(source_types, list) or not all(
+            isinstance(value, str) and value.strip() for value in source_types
+        ):
+            raise ValueError(prefix + f"facet {facet_id} requires source_types")
+        if "required" in facet and not isinstance(facet["required"], bool):
+            raise ValueError(prefix + f"facet {facet_id} required must be boolean")
+        freshness = facet.get("freshness_window_days")
+        if freshness is not None and (not isinstance(freshness, int) or freshness < 0):
+            raise ValueError(prefix + f"facet {facet_id} freshness_window_days must be non-negative")
+    if len(facet_ids) != len(set(facet_ids)):
+        raise ValueError(prefix + f"{pack_id} pack facet ids must be unique")
+
+    required = PROFILE_REQUIRED_FACETS.get(str(pack.get("profile") or ""))
+    missing = sorted((required or set()) - set(facet_ids))
+    if missing:
+        raise ValueError(prefix + f"{pack_id} pack missing required facets: {', '.join(missing)}")
+
+
+def _facet_templates(facet: dict[str, Any]) -> list[str]:
+    values = facet.get("query_templates") or []
+    if isinstance(values, str):
+        values = [values]
+    return [str(value) for value in values if isinstance(value, str) and value.strip()]

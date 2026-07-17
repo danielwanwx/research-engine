@@ -1,0 +1,186 @@
+{
+ "as_of": "2026-07-16",
+ "summary": {
+  "strong": 1,
+  "adequate": 4,
+  "fragile": 8,
+  "missing": 12
+ },
+ "dimensions": [
+  {
+   "n": 1,
+   "dimension": "intent_clarification_question_decomposition",
+   "rating": "missing",
+   "evidence_ref": "B2 comparison intent lost; verbatim topic",
+   "confidence": "H"
+  },
+  {
+   "n": 2,
+   "dimension": "pack_routing_domain_adaptation",
+   "rating": "fragile",
+   "evidence_ref": "packs.py:51 min_score=1; 3 packs only; B1/B3 routed OK",
+   "confidence": "H"
+  },
+  {
+   "n": 3,
+   "dimension": "autonomous_discovery_source_registry",
+   "rating": "missing",
+   "evidence_ref": "B4 failed_no_sources / junk-only with all flags",
+   "confidence": "H"
+  },
+  {
+   "n": 4,
+   "dimension": "query_generation_expansion_repair",
+   "rating": "missing",
+   "evidence_ref": "packs.py:65 queries never executed; B2",
+   "confidence": "H"
+  },
+  {
+   "n": 5,
+   "dimension": "web_search_crawl_sitemap_canonicalization",
+   "rating": "missing",
+   "evidence_ref": "README:260; B2/B4; canonical URL in dedupe only",
+   "confidence": "H"
+  },
+  {
+   "n": 6,
+   "dimension": "js_rendering_dynamic_extraction",
+   "rating": "fragile",
+   "evidence_ref": "web.py:182 silent playwright fallback; B6 X render worked",
+   "confidence": "H"
+  },
+  {
+   "n": 7,
+   "dimension": "pdf_table_structured_code_release_issue",
+   "rating": "missing",
+   "evidence_ref": "B6/B8 PDF binary tier-high; tables flattened",
+   "confidence": "H"
+  },
+  {
+   "n": 8,
+   "dimension": "github_intelligence_license_maintenance",
+   "rating": "fragile",
+   "evidence_ref": "B5 sort=updated noise; no license/release fields; exact-name works",
+   "confidence": "H"
+  },
+  {
+   "n": 9,
+   "dimension": "news_finance_filings_papers_patents_standards",
+   "rating": "fragile",
+   "evidence_ref": "finance_quote unofficial Yahoo, quotes only (B1); nothing else",
+   "confidence": "H"
+  },
+  {
+   "n": 10,
+   "dimension": "freshness_asof_temporal_monitoring",
+   "rating": "missing",
+   "evidence_ref": "B1 no published_at anywhere; stale seeds unflagged",
+   "confidence": "H"
+  },
+  {
+   "n": 11,
+   "dimension": "authority_independence_diversity",
+   "rating": "missing",
+   "evidence_ref": "quality.py:129 self-declared confidence; B6 block pages high",
+   "confidence": "H"
+  },
+  {
+   "n": 12,
+   "dimension": "relevance_reranking_yield",
+   "rating": "missing",
+   "evidence_ref": "form-based scoring only; B5",
+   "confidence": "H"
+  },
+  {
+   "n": 13,
+   "dimension": "normalization_chunking_stable_id_hash",
+   "rating": "fragile",
+   "evidence_ref": "B8 evidence_id collisions; 4000-char truncation",
+   "confidence": "H"
+  },
+  {
+   "n": 14,
+   "dimension": "semantic_duplicate_source_family",
+   "rating": "missing",
+   "evidence_ref": "quality.py:174 exact-only",
+   "confidence": "H"
+  },
+  {
+   "n": 15,
+   "dimension": "claim_extraction_graph_entailment_coverage",
+   "rating": "missing",
+   "evidence_ref": "synthesis.py:179 keyword buckets; B1 junk-grounded claims",
+   "confidence": "H"
+  },
+  {
+   "n": 16,
+   "dimension": "contradiction_uncertainty_confidence_abstention",
+   "rating": "fragile",
+   "evidence_ref": "B3 flag fired, chains self-referential, confidence unadjusted",
+   "confidence": "H"
+  },
+  {
+   "n": 17,
+   "dimension": "retry_timeout_cache_backoff_ratelimit_budget",
+   "rating": "fragile",
+   "evidence_ref": "execution.py:136 no backoff; B7 cache no TTL; soft timeout",
+   "confidence": "H"
+  },
+  {
+   "n": 18,
+   "dimension": "repair_loop_no_progress_detection",
+   "rating": "missing",
+   "evidence_ref": "loop.py:629 advisory only; B2/B4 operator repair",
+   "confidence": "H"
+  },
+  {
+   "n": 19,
+   "dimension": "persistent_memory_incremental_diff_monitor",
+   "rating": "missing",
+   "evidence_ref": "B7 no diff; state.py doctor-only",
+   "confidence": "H"
+  },
+  {
+   "n": 20,
+   "dimension": "maker_checker_multiagent_isolation",
+   "rating": "adequate",
+   "evidence_ref": "separate check artifacts; checker warn-only (B1)",
+   "confidence": "M"
+  },
+  {
+   "n": 21,
+   "dimension": "telemetry_replay_artifact_schema_run_comparison",
+   "rating": "fragile",
+   "evidence_ref": "strong per-request telemetry; B4/B7 silent run-dir overwrite; no replay",
+   "confidence": "H"
+  },
+  {
+   "n": 22,
+   "dimension": "security_redaction_human_gate_supply_chain",
+   "rating": "strong",
+   "evidence_ref": "web.py:188 SSRF; security.py redaction; zero deps; caveat: UA spoof, no robots.txt",
+   "confidence": "H"
+  },
+  {
+   "n": 23,
+   "dimension": "cli_api_library_ux_connector_extensibility",
+   "rating": "adequate",
+   "evidence_ref": "14-line connector contract; not pip-installed friction",
+   "confidence": "M"
+  },
+  {
+   "n": 24,
+   "dimension": "benchmark_regression_adversarial_quality_gate",
+   "rating": "missing",
+   "evidence_ref": "no eval harness; tests all mocked 0.19s",
+   "confidence": "H"
+  },
+  {
+   "n": 25,
+   "dimension": "packaging_versioning_docs_contributor_experience",
+   "rating": "adequate",
+   "evidence_ref": "honest README limits; no CHANGELOG/CI",
+   "confidence": "M"
+  }
+ ]
+}

@@ -1,0 +1,59 @@
+{
+  "source_id": "finance_quote_watchlist",
+  "connector": "finance_quote",
+  "rows": [
+    {
+      "source_id": "finance_quote_watchlist",
+      "connector": "finance_quote",
+      "title": "Micron Technology quote",
+      "url": "https://finance.yahoo.com/quote/MU",
+      "captured_at": "2026-07-16T20:22:13.248739+00:00",
+      "text": "MU regular market price: 853.2 USD",
+      "metrics": {
+        "symbol": "MU",
+        "name": "Micron Technology",
+        "currency": "USD",
+        "regular_market_price": 853.2,
+        "fifty_two_week_high": 1255.0,
+        "fifty_two_week_low": 103.38
+      },
+      "source_confidence": "medium"
+    },
+    {
+      "source_id": "finance_quote_watchlist",
+      "connector": "finance_quote",
+      "title": "Sandisk quote",
+      "url": "https://finance.yahoo.com/quote/SNDK",
+      "captured_at": "2026-07-16T20:22:13.457608+00:00",
+      "text": "SNDK regular market price: 1411.08 USD",
+      "metrics": {
+        "symbol": "SNDK",
+        "name": "Sandisk",
+        "currency": "USD",
+        "regular_market_price": 1411.08,
+        "fifty_two_week_high": 2354.39,
+        "fifty_two_week_low": 40.1
+      },
+      "source_confidence": "medium"
+    },
+    {
+      "source_id": "finance_quote_watchlist",
+      "connector": "finance_quote",
+      "title": "SK hynix quote",
+      "url": "https://finance.yahoo.com/quote/000660.KS",
+      "captured_at": "2026-07-16T20:22:13.733512+00:00",
+      "text": "000660.KS regular market price: 1842000.0 KRW",
+      "metrics": {
+        "symbol": "000660.KS",
+        "name": "SK hynix",
+        "currency": "KRW",
+        "regular_market_price": 1842000.0,
+        "fifty_two_week_high": 2987000.0,
+        "fifty_two_week_low": 245000.0
+      },
+      "source_confidence": "medium"
+    }
+  ],
+  "warnings": [],
+  "metadata": {}
+}

@@ -59,13 +59,20 @@ DOMAIN_SAFE_SENSITIVE_SUFFIXES = (
     "_token",
 )
 SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(cookie|set-cookie|bearer|token|secret|password|passwd|"
-    r"api[_-]?key|access[_-]?token|auth[_-]?token|id[_-]?token|refresh[_-]?token|"
-    r"storage[_-]?state|credential|session(?:id|[_-]?id)?)\s*[:=]\s*[^\s,;&]+"
+    r"(?i)(?<!prior )(?<!pre )\b("
+    r"(?:[a-z0-9]+[_-])*(?:auth|cookie|set-cookie|bearer|token|secret|"
+    r"password|passwd|api[_-]?key|access[_-]?token|auth[_-]?token|id[_-]?token|"
+    r"refresh[_-]?token|storage[_-]?state|credential|session(?:id|[_-]?id)?)"
+    r"(?:[_-][a-z0-9]+)*)\s*([:=])\s*([^\s,;&]+)"
 )
 SENSITIVE_HEADER_RE = re.compile(r"(?im)\b(cookie|set-cookie)\s*[:=]\s*[^\r\n]+")
 AUTH_CREDENTIAL_HEADER_RE = re.compile(
-    r"(?im)^\s*authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9_-]*)\s+[^\r\n,;]+"
+    r"(?i)(?<!prior )(?<!pre )\bauthorization\s*[:=]\s*"
+    r"(Basic|Bearer|Digest|OAuth|Token|ApiKey)\s+([^\s,;]+)"
+)
+AUTH_DIRECT_ASSIGNMENT_RE = re.compile(
+    r"(?i)\bauthorization\s*=\s*"
+    r"(?!(?:Basic|Bearer|Digest|OAuth|Token|ApiKey)\b)[^\s,;&]+"
 )
 BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 COMMON_SECRET_RE = re.compile(
@@ -80,13 +87,16 @@ SENSITIVE_URL_PARAM_RE = re.compile(
     r"session_id|sid|csrftoken|csrf_token|xsrf_token|token|api_key|apikey|"
     r"password|secret)=)[^&#\s]+"
 )
+SENSITIVE_FLAG_NAME_PATTERN = (
+    r"(?:[a-z0-9]+[_-])*(?:cookie|set[_-]cookie|authorization|auth|bearer|token|"
+    r"secret|password|passwd|api[_-]?key|storage[_-]?state|credential|"
+    r"session(?:id|[_-]?id)?)(?:[_-][a-z0-9]+)*"
+)
 SENSITIVE_FLAG_VALUE_TEXT_RE = re.compile(
-    r"(?i)(--?(?:cookie|set-cookie|authorization|auth|bearer|token|secret|password|passwd|"
-    r"api-?key|storage-?state|credential|session)\s+)([^\s]+)"
+    rf"(?i)(?<!\S)(--?({SENSITIVE_FLAG_NAME_PATTERN})\s+)([^\s]+)"
 )
 SENSITIVE_FLAG_RE = re.compile(
-    r"^--?(cookie|set-cookie|authorization|auth|bearer|token|secret|password|passwd|"
-    r"api-?key|storage-?state|credential|session)(?:=.*)?$",
+    rf"^--?({SENSITIVE_FLAG_NAME_PATTERN})(?:=.*)?$",
     re.IGNORECASE,
 )
 
@@ -161,6 +171,8 @@ def is_sensitive_key(key: Any) -> bool:
         if normalized.endswith(DOMAIN_SAFE_SENSITIVE_SUFFIXES):
             return True
         return False
+    if normalized.endswith(DOMAIN_SAFE_SENSITIVE_SUFFIXES):
+        return True
     if normalized in SENSITIVE_KEY_TOKENS:
         return True
     if normalized.startswith(("authorization_", "auth_header", "authentication_header")):
@@ -170,6 +182,17 @@ def is_sensitive_key(key: Any) -> bool:
     return bool(tokens & token_sensitive_keys)
 
 
+def redact_assignment(match: re.Match[str]) -> str:
+    key = match.group(1)
+    return f"{key}={REDACTED}" if is_sensitive_key(key) else match.group(0)
+
+
+def redact_flag_value(match: re.Match[str]) -> str:
+    if not is_sensitive_key(match.group(2)):
+        return match.group(0)
+    return f"{match.group(1)}{REDACTED}"
+
+
 def redact_text(value: Any) -> str:
     text = str(value)
     text = SENSITIVE_HEADER_RE.sub(lambda match: f"{match.group(1)}={REDACTED}", text)
@@ -177,10 +200,11 @@ def redact_text(value: Any) -> str:
         lambda match: f"authorization={match.group(1)} {REDACTED}",
         text,
     )
+    text = AUTH_DIRECT_ASSIGNMENT_RE.sub(f"authorization={REDACTED}", text)
     text = BEARER_RE.sub(f"Bearer {REDACTED}", text)
     text = SENSITIVE_URL_PARAM_RE.sub(lambda match: f"{match.group(1)}{REDACTED}", text)
-    text = SENSITIVE_FLAG_VALUE_TEXT_RE.sub(lambda match: f"{match.group(1)}{REDACTED}", text)
-    text = SENSITIVE_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}={REDACTED}", text)
+    text = SENSITIVE_FLAG_VALUE_TEXT_RE.sub(redact_flag_value, text)
+    text = SENSITIVE_ASSIGNMENT_RE.sub(redact_assignment, text)
     text = COMMON_SECRET_RE.sub(REDACTED, text)
     return text
 
@@ -249,7 +273,8 @@ def redact_command(command: Sequence[Any]) -> list[str]:
             redacted.append(REDACTED)
             redact_next = False
             continue
-        if SENSITIVE_FLAG_RE.match(text):
+        sensitive_flag = SENSITIVE_FLAG_RE.match(text)
+        if sensitive_flag and is_sensitive_key(sensitive_flag.group(1)):
             if "=" in text:
                 key = text.split("=", 1)[0]
                 redacted.append(f"{key}={REDACTED}")

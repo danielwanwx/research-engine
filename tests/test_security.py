@@ -22,6 +22,15 @@ def test_redact_text_preserves_prior_authorization_policy_text():
     text = "Prior authorization: required for CPT 99213 documentation."
 
     assert redact_text(text) == text
+
+
+def test_redact_text_preserves_noncredential_authorization_prose():
+    text = (
+        "Insurance authorization: required for claim processing. "
+        "Payment authorization: pending merchant review."
+    )
+
+    assert redact_text(text) == text
     assert sensitive_value_paths({"text": text}) == []
 
 
@@ -84,12 +93,38 @@ def test_redact_text_redacts_raw_cloud_github_and_jwt_tokens():
     assert text.count("[REDACTED]") == 3
 
 
+def test_redact_text_redacts_compound_sensitive_assignments():
+    text = redact_text(
+        "RuntimeError: client_secret=client-secret-value "
+        "request failed: aws_secret_access_key=aws-secret-value "
+        "stripe_api_key=stripe-secret-value prior_authorization=required "
+        "embedded header Authorization: Basic dXNlcjpwYXNz"
+    )
+
+    assert "client-secret-value" not in text
+    assert "aws-secret-value" not in text
+    assert "stripe-secret-value" not in text
+    assert "dXNlcjpwYXNz" not in text
+    assert "prior_authorization=required" in text
+
+
 def test_redact_command_hides_next_arg_secrets_and_executable_paths():
     command = redact_command(
         ["/tmp/private/opencli", "--token", "plain-secret", "--query", "visible"]
     )
 
     assert command == ["opencli", "--token", "[REDACTED]", "--query", "visible"]
+
+
+def test_redact_text_keeps_split_flag_match_out_of_preceding_secret_value():
+    text = redact_text(
+        "fake client_secret=smoke-secret --token split-secret "
+        "--client-secret compound-flag-secret {query}"
+    )
+
+    assert "smoke-secret" not in text
+    assert "split-secret" not in text
+    assert "compound-flag-secret" not in text
 
 
 def test_sanitize_for_artifact_redacts_command_like_lists():

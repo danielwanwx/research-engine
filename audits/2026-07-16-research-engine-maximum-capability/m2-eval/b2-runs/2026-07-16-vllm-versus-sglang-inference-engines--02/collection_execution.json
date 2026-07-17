@@ -1,0 +1,52 @@
+{
+  "generated_at": "2026-07-17T04:47:17.852373+00:00",
+  "max_workers": 4,
+  "retries": 1,
+  "cache_enabled": false,
+  "source_timeout_seconds": null,
+  "overall_deadline_seconds": null,
+  "host_max_concurrency": 2,
+  "host_delay_seconds": 0.1,
+  "request_count": 2,
+  "status_counts": {
+    "ok": 2
+  },
+  "requests": [
+    {
+      "source_id": "plan-q-0001-github_public_search",
+      "connector": "github_public_search",
+      "status": "ok",
+      "attempts": 1,
+      "cache_hit": false,
+      "row_count": 1,
+      "warnings": [],
+      "pass_id": "pass-1",
+      "facet_id": "project_vllm_repository",
+      "query_id": "q-0001",
+      "target_company": "",
+      "retry_delays_seconds": [],
+      "deadline_exhausted": false,
+      "host": "api.github.com",
+      "host_wait_seconds": 0.0,
+      "elapsed_ms": 0
+    },
+    {
+      "source_id": "plan-q-0002-github_public_search",
+      "connector": "github_public_search",
+      "status": "ok",
+      "attempts": 1,
+      "cache_hit": false,
+      "row_count": 1,
+      "warnings": [],
+      "pass_id": "pass-1",
+      "facet_id": "project_sglang_repository",
+      "query_id": "q-0002",
+      "target_company": "",
+      "retry_delays_seconds": [],
+      "deadline_exhausted": false,
+      "host": "api.github.com",
+      "host_wait_seconds": 0.1,
+      "elapsed_ms": 110
+    }
+  ]
+}

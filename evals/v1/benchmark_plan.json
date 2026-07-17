@@ -1,0 +1,58 @@
+{
+  "schema_version": "research_engine.benchmark.v1",
+  "source_audit": "audits/2026-07-16-research-engine-maximum-capability/02_benchmark_plan.json",
+  "offline_ci_gate": ["B6"],
+  "benchmarks": [
+    {
+      "id": "B1",
+      "title": "Fast-moving market research",
+      "mode": "live_optional",
+      "measures": ["freshness", "primary_sources", "stale_data_detection"]
+    },
+    {
+      "id": "B2",
+      "title": "Deep technical comparison",
+      "mode": "live_optional",
+      "measures": ["canonical_repository_discovery", "versions", "architecture_extraction"]
+    },
+    {
+      "id": "B3",
+      "title": "Contested evidence",
+      "mode": "fixture_planned",
+      "measures": ["conflict_chains", "confidence_calibration"]
+    },
+    {
+      "id": "B4",
+      "title": "Niche topic without pack",
+      "mode": "live_optional",
+      "measures": ["autonomous_discovery", "bounded_repair"]
+    },
+    {
+      "id": "B5",
+      "title": "GitHub ecosystem survey",
+      "mode": "live_optional",
+      "measures": ["ranking", "license", "release", "maintenance"]
+    },
+    {
+      "id": "B6",
+      "title": "Adversarial fetched content",
+      "mode": "offline",
+      "fixture": "fixtures/adversarial_rows.json",
+      "measures": ["validity_detection", "claim_exclusion", "observability"],
+      "threshold": "all checks pass"
+    },
+    {
+      "id": "B7",
+      "title": "Longitudinal rerun",
+      "mode": "fixture_planned",
+      "measures": ["cache", "freshness", "diff", "run_durability"]
+    },
+    {
+      "id": "B8",
+      "title": "Mixed formats",
+      "mode": "fixture_planned",
+      "measures": ["external_jsonl", "pdf", "tables", "evidence_id_uniqueness"]
+    }
+  ]
+}
+

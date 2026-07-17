@@ -1,0 +1,85 @@
+{
+  "schema_version": "facet_coverage.v1",
+  "required_facets": 6,
+  "required_facets_covered": 2,
+  "missing_required_facets": [
+    "project_vllm_official_docs",
+    "project_sglang_official_docs",
+    "comparison_benchmarks",
+    "comparison_limitations"
+  ],
+  "omitted_required_facets": [],
+  "relevance_threshold": 0.15,
+  "facets": [
+    {
+      "facet_id": "project_vllm_repository",
+      "required": true,
+      "planned": true,
+      "query_ids": [
+        "q-0001"
+      ],
+      "relevant_yield_count": 1,
+      "evidence_ids": [
+        "ev-0001"
+      ],
+      "status": "covered"
+    },
+    {
+      "facet_id": "project_sglang_repository",
+      "required": true,
+      "planned": true,
+      "query_ids": [
+        "q-0002"
+      ],
+      "relevant_yield_count": 1,
+      "evidence_ids": [
+        "ev-0002"
+      ],
+      "status": "covered"
+    },
+    {
+      "facet_id": "project_vllm_official_docs",
+      "required": true,
+      "planned": true,
+      "query_ids": [
+        "q-0003"
+      ],
+      "relevant_yield_count": 0,
+      "evidence_ids": [],
+      "status": "missing"
+    },
+    {
+      "facet_id": "project_sglang_official_docs",
+      "required": true,
+      "planned": true,
+      "query_ids": [
+        "q-0004"
+      ],
+      "relevant_yield_count": 0,
+      "evidence_ids": [],
+      "status": "missing"
+    },
+    {
+      "facet_id": "comparison_benchmarks",
+      "required": true,
+      "planned": true,
+      "query_ids": [
+        "q-0005"
+      ],
+      "relevant_yield_count": 0,
+      "evidence_ids": [],
+      "status": "missing"
+    },
+    {
+      "facet_id": "comparison_limitations",
+      "required": true,
+      "planned": true,
+      "query_ids": [
+        "q-0006"
+      ],
+      "relevant_yield_count": 0,
+      "evidence_ids": [],
+      "status": "missing"
+    }
+  ]
+}

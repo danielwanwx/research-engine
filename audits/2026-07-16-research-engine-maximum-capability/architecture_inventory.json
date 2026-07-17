@@ -1,0 +1,30 @@
+{
+  "as_of": "2026-07-16T13:12:00-07:00",
+  "commit": "134662c87d8d1d50f0a3e1b43dbbc6ce29cd6d72",
+  "loc_python": 6158,
+  "runtime_dependencies": [],
+  "optional_dependencies": ["playwright (present)", "pytest/ruff dev extras (ruff missing)"],
+  "entry_points": {"research": "interactive wizard", "research-engine": "run|doctor"},
+  "connectors": {
+    "manual": {"status": "implemented", "network": false},
+    "external_jsonl": {"status": "implemented", "network": false, "notes": "authorized exports; sanitized"},
+    "web_page": {"status": "implemented", "network": true, "notes": "explicit seeds only; 4000-char truncation; SSRF guard; silent playwright fallback; no robots/rate-limit"},
+    "finance_quote": {"status": "implemented", "network": true, "notes": "unofficial Yahoo v8 chart endpoint"},
+    "github_public_search": {"status": "implemented", "network": true, "notes": "unauthenticated repo search; only when platform_scope=all; no license/release/issues"},
+    "official_job_discovery": {"status": "implemented", "network": true, "notes": "target-only; official ATS endpoints"},
+    "xai_discovery": {"status": "implemented", "network": true, "notes": "target-only; requires GROK/XAI API key (absent here); discovery-only citations"},
+    "agent_reach_bridge": {"status": "implemented, upstream missing", "network": "via CLI"},
+    "opencli_bridge": {"status": "implemented, upstream missing", "network": "via CLI"},
+    "web_crawler": {"status": "planned only"},
+    "chrome_platform_sampler": {"status": "planned only"}
+  },
+  "pipeline": ["pack routing", "platform plan", "source requests", "concurrent collect (<=4 workers, retry, soft timeout, optional cache)", "normalize rows", "sanitize", "heuristic quality + exact dedupe + term-conflict", "keyword claim review", "matrix", "decision brief", "13 post-hoc loop checks", "11 artifacts"],
+  "iteration": {"repair_loop": false, "feedback_actions": "advisory strings only", "multi_step_retrieval": "only structured-target xai->refetch"},
+  "depth_caps": {"quick": 3, "deep": 8, "audit": 12},
+  "packs": ["generic (0 sources)", "memory_cycle (finance tickers + 2026 seed URLs)", "interview_prep"],
+  "freshness_support": "captured_at only; no windows, no staleness detection",
+  "citation_support": "evidence_ids by keyword bucket; no entailment/span grounding",
+  "persistence": "none across runs (cache optional, no TTL; no diff/monitor)",
+  "tests": {"count": 127, "duration_s": 0.19, "network": "all mocked/offline", "e2e": false},
+  "docs": ["README.md", "docs/connector-support.md", "docs/target-intelligence.md"]
+}

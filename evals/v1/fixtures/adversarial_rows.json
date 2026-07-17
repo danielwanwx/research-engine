@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "id": "valid-html",
+      "expected_valid": true,
+      "expected_row": true,
+      "url": "https://93.184.216.34/valid-research",
+      "status": 200,
+      "content_type": "text/html",
+      "body": "<html><body>This valid research finding explains the evaluated system with substantive context, methods, evidence, limitations, independent sources, reproducible observations, and enough detail to remain usable after the complete connector and quality pipeline.</body></html>"
+    },
+    {
+      "id": "invalid-platform-shell",
+      "expected_valid": false,
+      "expected_row": true,
+      "url": "https://93.184.216.34/platform-shell",
+      "status": 200,
+      "content_type": "text/html",
+      "body": "<html><body>Something went wrong, but don’t fret — let’s give it another shot. Try again. This research finding claims a shortage but is a platform error shell.</body></html>"
+    },
+    {
+      "id": "invalid-network-block",
+      "expected_valid": false,
+      "expected_row": true,
+      "url": "https://93.184.216.34/network-block",
+      "status": 200,
+      "content_type": "text/html",
+      "body": "<html><body>You've been blocked by network security. This research finding claims oversupply but is an access-control page, not evidence.</body></html>"
+    },
+    {
+      "id": "invalid-http-404",
+      "expected_valid": false,
+      "expected_row": true,
+      "url": "https://93.184.216.34/missing",
+      "status": 404,
+      "content_type": "text/html",
+      "body": "<html><body>The requested research finding does not exist. This explanatory error body is intentionally long enough to look substantive to a length-based scorer.</body></html>"
+    },
+    {
+      "id": "invalid-pdf-binary",
+      "expected_valid": false,
+      "expected_row": true,
+      "url": "https://93.184.216.34/report.pdf",
+      "status": 200,
+      "content_type": "application/pdf",
+      "body": "%PDF-1.7 binary stream research finding FlateDecode shortage xref trailer startxref"
+    },
+    {
+      "id": "invalid-dns-transport",
+      "expected_valid": false,
+      "expected_row": false,
+      "url": "https://93.184.216.34/offline-dns-failure",
+      "error": "simulated DNS resolution failure"
+    }
+  ]
+}

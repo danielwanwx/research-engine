@@ -1,0 +1,86 @@
+{
+  "schema_version": "research_engine.eval.v1",
+  "generated_at": "2026-07-17T04:49:39.554413+00:00",
+  "suite_id": "m0-evidence-validity",
+  "offline": true,
+  "fixture": "evals/v1/fixtures/adversarial_rows.json",
+  "summary": {
+    "passed": true,
+    "checks_passed": 9,
+    "checks_total": 9,
+    "probes_total": 6,
+    "invalid_probes_detected": 5,
+    "invalid_probes_total": 5
+  },
+  "checks": [
+    {
+      "id": "connector_probe_classification",
+      "passed": true,
+      "expected": {
+        "valid-html": true,
+        "invalid-platform-shell": false,
+        "invalid-network-block": false,
+        "invalid-http-404": false,
+        "invalid-pdf-binary": false
+      },
+      "actual": {
+        "valid-html": true,
+        "invalid-platform-shell": false,
+        "invalid-network-block": false,
+        "invalid-http-404": false,
+        "invalid-pdf-binary": false
+      }
+    },
+    {
+      "id": "transport_failure_visible",
+      "passed": true,
+      "warnings": [
+        "web_page invalid content for https://93.184.216.34/platform-shell: platform_error",
+        "web_page invalid content for https://93.184.216.34/network-block: blocked_by_network_security",
+        "web_page invalid content for https://93.184.216.34/missing: http_status_404",
+        "web_page invalid content for https://93.184.216.34/report.pdf: binary_pdf,unsupported_content_type_application/pdf,pdf_extraction_failed,insufficient_text",
+        "web_page failed for https://93.184.216.34/offline-dns-failure: ValueError: simulated DNS resolution failure"
+      ]
+    },
+    {
+      "id": "invalid_count",
+      "passed": true,
+      "expected": 4,
+      "actual": 4
+    },
+    {
+      "id": "invalid_pack_claim_refs",
+      "passed": true,
+      "invalid_refs": []
+    },
+    {
+      "id": "invalid_generic_claim_refs",
+      "passed": true,
+      "invalid_refs": []
+    },
+    {
+      "id": "invalid_matrix_refs",
+      "passed": true,
+      "invalid_refs": []
+    },
+    {
+      "id": "invalid_conflict_exclusion",
+      "passed": true,
+      "actual": []
+    },
+    {
+      "id": "valid_claim_survives",
+      "passed": true,
+      "actual": [
+        "valid-html"
+      ]
+    },
+    {
+      "id": "observability",
+      "passed": true,
+      "expected_rows": 5,
+      "actual_rows": 5,
+      "transport_warnings": 1
+    }
+  ]
+}

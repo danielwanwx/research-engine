@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
+import random
+import threading
 import time
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from research_engine.models import CollectionRequest, CollectionResult, utc_now
 
@@ -22,6 +26,14 @@ class ConnectorExecutionOptions:
     retries: int = 1
     cache_dir: Path | None = None
     source_timeout_seconds: float | None = None
+    backoff_base_seconds: float = 0.25
+    backoff_cap_seconds: float = 4.0
+    sleep_fn: Callable[[float], None] = field(default=time.sleep, repr=False, compare=False)
+    jitter_fn: Callable[[], float] = field(default=random.random, repr=False, compare=False)
+    monotonic_fn: Callable[[], float] = field(default=time.monotonic, repr=False, compare=False)
+    overall_deadline_seconds: float | None = None
+    host_max_concurrency: int = 2
+    host_delay_seconds: float = 0.1
 
 
 def execute_collection_requests(
@@ -33,6 +45,7 @@ def execute_collection_requests(
     """Run connector requests concurrently and return results, warnings, and telemetry."""
 
     resolved_options = options or ConnectorExecutionOptions()
+    scheduler = _HostScheduler(resolved_options)
     if not requests:
         return [], [], build_execution_report(options=resolved_options, records=[])
 
@@ -45,6 +58,7 @@ def execute_collection_requests(
             request,
             connector_providers=connector_providers,
             options=resolved_options,
+            scheduler=scheduler,
         )
 
     timed_out = False
@@ -68,6 +82,14 @@ def execute_collection_requests(
                 "cache_hit": False,
                 "row_count": 0,
                 "warnings": [warning],
+                "pass_id": str(request.source.get("pass_id") or "pass-1"),
+                "facet_id": str(request.source.get("facet_id") or ""),
+                "query_id": str(request.source.get("query_id") or ""),
+                "target_company": str(request.source.get("target_company") or ""),
+                "retry_delays_seconds": [],
+                "deadline_exhausted": False,
+                "host": request_host(request),
+                "host_wait_seconds": 0.0,
                 "elapsed_ms": None,
             }
             continue
@@ -90,9 +112,11 @@ def execute_one_request(
     *,
     connector_providers: dict[str, ConnectorProvider],
     options: ConnectorExecutionOptions,
+    scheduler: _HostScheduler | None = None,
 ) -> tuple[CollectionResult | None, dict[str, Any]]:
     connector_id = str(request.source.get("connector") or "")
-    started = time.monotonic()
+    resolved_scheduler = scheduler or _HostScheduler(options)
+    started = options.monotonic_fn()
     cache_key = build_cache_key(request, connector_id=connector_id)
     warnings: list[str] = []
     if options.cache_dir:
@@ -105,15 +129,22 @@ def execute_one_request(
                 warnings=list(cached.get("warnings") or []),
                 metadata={**dict(cached.get("metadata") or {}), "cache_hit": True},
             )
+            cached_status = str(result.metadata.get("status") or "")
             return result, build_record(
                 request=request,
                 connector_id=connector_id,
-                status="cache_hit",
+                status=(
+                    cached_status
+                    if cached_status
+                    in {"failed", "rate_limit", "robots_denied", "retry_exhausted"}
+                    else "cache_hit"
+                ),
                 attempts=0,
                 cache_hit=True,
                 row_count=len(result.rows),
                 warnings=result.warnings,
                 started=started,
+                clock_fn=options.monotonic_fn,
             )
 
     provider = connector_providers.get(connector_id)
@@ -128,34 +159,116 @@ def execute_one_request(
             row_count=0,
             warnings=[warning],
             started=started,
+            clock_fn=options.monotonic_fn,
         )
 
     attempts = 0
     last_error = ""
+    retry_delays: list[float] = []
+    host_wait_seconds = 0.0
+    deadline_exhausted = False
     max_attempts = max(1, options.retries + 1)
     for attempt in range(1, max_attempts + 1):
         attempts = attempt
         connector = provider() if callable(provider) else provider
         try:
-            result = connector.collect(request)
-        except Exception as exc:
-            last_error = str(exc)
-            if attempt < max_attempts:
-                continue
-            warning = f"{connector_id} connector crashed for {request.source_id}: {exc}"
+            with resolved_scheduler.slot(request) as host_wait:
+                host_wait_seconds += host_wait
+                result = connector.collect(request)
+        except DeadlineExceeded:
+            deadline_exhausted = True
+            warning = f"{connector_id} connector deadline exhausted for {request.source_id}"
             return None, build_record(
                 request=request,
                 connector_id=connector_id,
-                status="failed",
+                status="retry_exhausted",
                 attempts=attempts,
                 cache_hit=False,
                 row_count=0,
                 warnings=[warning],
                 started=started,
+                retry_delays=retry_delays,
+                deadline_exhausted=True,
+                host_wait_seconds=host_wait_seconds,
+                clock_fn=options.monotonic_fn,
             )
-        if options.cache_dir:
+        except Exception as exc:
+            last_error = str(exc)
+            if attempt < max_attempts:
+                delay = retry_delay_seconds(
+                    attempt,
+                    base=options.backoff_base_seconds,
+                    cap=options.backoff_cap_seconds,
+                    jitter=options.jitter_fn(),
+                )
+                retry_after = retry_after_seconds(exc)
+                if retry_after is not None:
+                    delay = max(delay, min(retry_after, max(0.0, options.backoff_cap_seconds)))
+                remaining = resolved_scheduler.remaining_seconds()
+                if remaining is not None and delay > remaining:
+                    deadline_exhausted = True
+                    status = "rate_limit" if is_rate_limit(exc) else "retry_exhausted"
+                    warning = failure_warning(
+                        connector_id,
+                        request.source_id,
+                        exc,
+                        status=status,
+                    )
+                    return None, build_record(
+                        request=request,
+                        connector_id=connector_id,
+                        status=status,
+                        attempts=attempts,
+                        cache_hit=False,
+                        row_count=0,
+                        warnings=[warning],
+                        started=started,
+                        retry_delays=retry_delays,
+                        deadline_exhausted=True,
+                        host_wait_seconds=host_wait_seconds,
+                        clock_fn=options.monotonic_fn,
+                    )
+                if delay:
+                    options.sleep_fn(delay)
+                retry_delays.append(delay)
+                continue
+            status = "rate_limit" if is_rate_limit(exc) else (
+                "retry_exhausted" if attempts > 1 else "failed"
+            )
+            warning = failure_warning(connector_id, request.source_id, exc, status=status)
+            return None, build_record(
+                request=request,
+                connector_id=connector_id,
+                status=status,
+                attempts=attempts,
+                cache_hit=False,
+                row_count=0,
+                warnings=[warning],
+                started=started,
+                retry_delays=retry_delays,
+                deadline_exhausted=deadline_exhausted,
+                host_wait_seconds=host_wait_seconds,
+                clock_fn=options.monotonic_fn,
+            )
+        for row in result.rows:
+            row.setdefault("source_id", request.source_id)
+            row.setdefault("query_id", str(request.source.get("query_id") or ""))
+            row.setdefault("facet_id", str(request.source.get("facet_id") or ""))
+            row.setdefault("pass_id", str(request.source.get("pass_id") or "pass-1"))
+        result_status = str(result.metadata.get("status") or "")
+        status = (
+            result_status
+            if result_status
+            in {"failed", "rate_limit", "robots_denied", "retry_exhausted"}
+            else "warning" if result.warnings else "ok"
+        )
+        if options.cache_dir and status not in {
+            "failed",
+            "rate_limit",
+            "robots_denied",
+            "retry_exhausted",
+        }:
             write_cached_result(options.cache_dir, cache_key, result)
-        status = "warning" if result.warnings else "ok"
         return result, build_record(
             request=request,
             connector_id=connector_id,
@@ -165,6 +278,10 @@ def execute_one_request(
             row_count=len(result.rows),
             warnings=result.warnings,
             started=started,
+            retry_delays=retry_delays,
+            deadline_exhausted=deadline_exhausted,
+            host_wait_seconds=host_wait_seconds,
+            clock_fn=options.monotonic_fn,
         )
 
     warning = f"{connector_id} connector failed for {request.source_id}: {last_error or 'unknown error'}"
@@ -178,6 +295,10 @@ def execute_one_request(
         row_count=0,
         warnings=warnings,
         started=started,
+        retry_delays=retry_delays,
+        deadline_exhausted=deadline_exhausted,
+        host_wait_seconds=host_wait_seconds,
+        clock_fn=options.monotonic_fn,
     )
 
 
@@ -196,6 +317,9 @@ def build_execution_report(
         "retries": options.retries,
         "cache_enabled": options.cache_dir is not None,
         "source_timeout_seconds": options.source_timeout_seconds,
+        "overall_deadline_seconds": options.overall_deadline_seconds,
+        "host_max_concurrency": options.host_max_concurrency,
+        "host_delay_seconds": options.host_delay_seconds,
         "request_count": len(records),
         "status_counts": status_counts,
         "requests": records,
@@ -212,6 +336,10 @@ def build_record(
     row_count: int,
     warnings: list[str],
     started: float,
+    retry_delays: list[float] | None = None,
+    deadline_exhausted: bool = False,
+    host_wait_seconds: float = 0.0,
+    clock_fn: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
     return {
         "source_id": request.source_id,
@@ -221,8 +349,127 @@ def build_record(
         "cache_hit": cache_hit,
         "row_count": row_count,
         "warnings": list(warnings),
-        "elapsed_ms": int((time.monotonic() - started) * 1000),
+        "pass_id": str(request.source.get("pass_id") or "pass-1"),
+        "facet_id": str(request.source.get("facet_id") or ""),
+        "query_id": str(request.source.get("query_id") or ""),
+        "target_company": str(request.source.get("target_company") or ""),
+        "retry_delays_seconds": list(retry_delays or []),
+        "deadline_exhausted": deadline_exhausted,
+        "host": request_host(request),
+        "host_wait_seconds": round(host_wait_seconds, 3),
+        "elapsed_ms": int((clock_fn() - started) * 1000),
     }
+
+
+def retry_delay_seconds(
+    attempt: int,
+    *,
+    base: float,
+    cap: float,
+    jitter: float,
+) -> float:
+    """Return bounded exponential delay with 50-100% jitter."""
+
+    bounded_jitter = min(1.0, max(0.0, float(jitter)))
+    exponential = min(max(0.0, float(cap)), max(0.0, float(base)) * (2 ** max(0, attempt - 1)))
+    return round(exponential * (0.5 + 0.5 * bounded_jitter), 3)
+
+
+def retry_after_seconds(exc: BaseException) -> float | None:
+    value = getattr(exc, "retry_after_seconds", None)
+    if value is None:
+        headers = getattr(exc, "headers", None)
+        if hasattr(headers, "get"):
+            value = headers.get("Retry-After")
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, seconds)
+
+
+def is_rate_limit(exc: BaseException) -> bool:
+    return getattr(exc, "code", None) == 429 or getattr(exc, "status", None) == 429
+
+
+def failure_warning(
+    connector_id: str,
+    source_id: str,
+    exc: BaseException,
+    *,
+    status: str,
+) -> str:
+    label = "rate limited" if status == "rate_limit" else "crashed"
+    return f"{connector_id} connector {label} for {source_id}: {type(exc).__name__}"
+
+
+def request_host(request: CollectionRequest) -> str:
+    source = request.source
+    candidates = [source.get("url"), source.get("endpoint")]
+    pages = source.get("pages") or []
+    if pages and isinstance(pages[0], dict):
+        candidates.append(pages[0].get("url"))
+    for value in candidates:
+        host = str(urlsplit(str(value or "")).hostname or "").lower()
+        if host:
+            return host
+    return ""
+
+
+class DeadlineExceeded(TimeoutError):
+    pass
+
+
+class _HostScheduler:
+    def __init__(self, options: ConnectorExecutionOptions) -> None:
+        self.options = options
+        self.started = options.monotonic_fn()
+        self.deadline = (
+            self.started + max(0.0, options.overall_deadline_seconds)
+            if options.overall_deadline_seconds is not None
+            else None
+        )
+        self._lock = threading.Lock()
+        self._semaphores: dict[str, threading.BoundedSemaphore] = {}
+        self._last_started: dict[str, float] = {}
+
+    def remaining_seconds(self) -> float | None:
+        if self.deadline is None:
+            return None
+        return max(0.0, self.deadline - self.options.monotonic_fn())
+
+    @contextmanager
+    def slot(self, request: CollectionRequest):
+        host = request_host(request)
+        if not host:
+            if self.remaining_seconds() == 0:
+                raise DeadlineExceeded
+            yield 0.0
+            return
+        with self._lock:
+            semaphore = self._semaphores.setdefault(
+                host,
+                threading.BoundedSemaphore(max(1, self.options.host_max_concurrency)),
+            )
+        remaining = self.remaining_seconds()
+        acquired = semaphore.acquire(timeout=remaining) if remaining is not None else semaphore.acquire()
+        if not acquired:
+            raise DeadlineExceeded
+        wait = 0.0
+        try:
+            with self._lock:
+                now = self.options.monotonic_fn()
+                target = self._last_started.get(host, now) + max(0.0, self.options.host_delay_seconds)
+                wait = max(0.0, target - now) if host in self._last_started else 0.0
+                remaining = self.remaining_seconds()
+                if remaining is not None and wait > remaining:
+                    raise DeadlineExceeded
+                if wait:
+                    self.options.sleep_fn(wait)
+                self._last_started[host] = self.options.monotonic_fn()
+            yield round(wait, 3)
+        finally:
+            semaphore.release()
 
 
 def build_cache_key(request: CollectionRequest, *, connector_id: str) -> str:

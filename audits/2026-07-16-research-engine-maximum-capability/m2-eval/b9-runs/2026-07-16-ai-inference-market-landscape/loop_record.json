@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-07-17T04:42:42.004274+00:00",
+  "loop_id": "research_loop_v1",
+  "topic": "AI inference market landscape",
+  "run_status": "complete",
+  "loop_status": "complete_with_review_required",
+  "stop_reason": "completed_with_review_required",
+  "check_results": [
+    {
+      "check_id": "context_hygiene",
+      "status": "pass",
+      "observed": "Evidence is represented as artifact rows, not inline run context."
+    },
+    {
+      "check_id": "stop_brakes",
+      "status": "warn",
+      "observed": "No source timeout configured.",
+      "feedback_action": "Set --source-timeout-seconds so long-running connectors have a hard stop."
+    },
+    {
+      "check_id": "critic_separation",
+      "status": "pass",
+      "observed": "Quality, claim, and decision critic artifacts are present."
+    },
+    {
+      "check_id": "tool_focus",
+      "status": "pass",
+      "observed": "7 source(s) across 1 connector type(s): web_search."
+    },
+    {
+      "check_id": "bounded_execution",
+      "status": "warn",
+      "observed": "No source timeout configured.",
+      "feedback_action": "Set --source-timeout-seconds for fragile or long-running connectors."
+    },
+    {
+      "check_id": "executable_sources",
+      "status": "pass",
+      "observed": "7 executable source(s) planned."
+    },
+    {
+      "check_id": "evidence_collected",
+      "status": "pass",
+      "observed": "14 evidence row(s) collected."
+    },
+    {
+      "check_id": "source_quality",
+      "status": "pass",
+      "observed": "Average quality score is 0.64."
+    },
+    {
+      "check_id": "duplicate_pressure",
+      "status": "warn",
+      "observed": "7 duplicate cluster(s) detected.",
+      "feedback_action": "Review duplicate clusters before counting corroboration."
+    },
+    {
+      "check_id": "conflict_review",
+      "status": "pass",
+      "observed": "No directional conflict flags detected."
+    },
+    {
+      "check_id": "claim_grounding",
+      "status": "warn",
+      "observed": "Evidence was collected, but no pack-specific claim buckets were proven.",
+      "feedback_action": "Add claim specs or run a human/LLM analysis pass before treating this as decision-ready."
+    },
+    {
+      "check_id": "target_claim_threshold",
+      "status": "skip",
+      "observed": "Run does not use the structured target contract."
+    },
+    {
+      "check_id": "connector_health",
+      "status": "pass",
+      "observed": "No connector warnings recorded."
+    },
+    {
+      "check_id": "facet_coverage",
+      "status": "pass",
+      "observed": "All planned required facets have relevant yield."
+    },
+    {
+      "check_id": "repair_bounds",
+      "status": "pass",
+      "observed": "No repair was required or available."
+    }
+  ],
+  "feedback_actions": [
+    {
+      "reason": "stop_brakes",
+      "action": "Set --source-timeout-seconds so long-running connectors have a hard stop."
+    },
+    {
+      "reason": "bounded_execution",
+      "action": "Set --source-timeout-seconds for fragile or long-running connectors."
+    },
+    {
+      "reason": "duplicate_pressure",
+      "action": "Review duplicate clusters before counting corroboration."
+    },
+    {
+      "reason": "claim_grounding",
+      "action": "Add claim specs or run a human/LLM analysis pass before treating this as decision-ready."
+    }
+  ],
+  "records_written": {
+    "query_plan": "query_plan.json",
+    "execution": "collection_execution.json",
+    "evidence": "evidence.jsonl",
+    "chunks": "chunks.jsonl",
+    "quality": "evidence_quality.json",
+    "facet_coverage": "facet_coverage.json",
+    "repair": "repair_record.json",
+    "claims": "claim_review.json",
+    "decision": "decision_brief.json"
+  },
+  "critic_summary": {
+    "stance": "evidence_collected_needs_analysis",
+    "confidence": "medium",
+    "support_level": null,
+    "action_bias": "analyze_before_action",
+    "average_quality_score": 0.64,
+    "conflict_flag_count": 0
+  }
+}

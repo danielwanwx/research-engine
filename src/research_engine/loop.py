@@ -34,6 +34,8 @@ def build_loop_contract(
         ),
         "input_scope": {
             "topic": topic,
+            "artifact_contract": query_plan.get("artifact_contract"),
+            "target": query_plan.get("target"),
             "pack": {
                 "id": str(pack.get("id") or "generic"),
                 "profile": str(pack.get("profile") or pack.get("id") or "generic"),
@@ -95,8 +97,13 @@ def build_loop_contract(
             },
             {
                 "id": "check",
-                "description": "Score source quality, detect duplicates, and flag directional conflicts.",
+                "description": "Score quality and relevance, verify facet coverage, and flag conflicts.",
                 "record": "evidence_quality.json",
+            },
+            {
+                "id": "repair",
+                "description": "Run at most one deterministic repair pass for failed required facets.",
+                "record": "repair_record.json",
             },
             {
                 "id": "review",
@@ -174,6 +181,13 @@ def build_loop_contract(
                 "pass_condition": "Claim review is not based on zero evidence for executed runs.",
             },
             {
+                "id": "target_claim_threshold",
+                "kind": "critic",
+                "pass_condition": (
+                    "Structured targets expose baseline_only unless a current final official JD passes."
+                ),
+            },
+            {
                 "id": "connector_health",
                 "kind": "tooling",
                 "pass_condition": "Connector warnings are absent or translated into feedback actions.",
@@ -240,13 +254,18 @@ def build_loop_contract(
             "query_plan.json",
             "collection_execution.json",
             "evidence.jsonl",
+            "chunks.jsonl",
             "evidence_quality.json",
+            "facet_coverage.json",
+            "repair_record.json",
             "claim_review.json",
             "supply_demand_matrix.json",
             "decision_brief.json",
             "loop_contract.json",
             "loop_record.json",
             "research_report.md",
+            "research_report.pdf",
+            "pdf_report_status.json",
         ],
         "stop_conditions": {
             "success": [
@@ -291,6 +310,8 @@ def build_loop_record(
     quality_report: dict[str, Any],
     claim_review: dict[str, Any],
     decision_brief: dict[str, Any],
+    repair_record: dict[str, Any] | None = None,
+    facet_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the concrete check/feedback record for a completed run."""
 
@@ -311,7 +332,10 @@ def build_loop_record(
         check_duplicate_pressure(quality_report=quality_report),
         check_conflict_review(quality_report=quality_report),
         check_claim_grounding(claim_review=claim_review, dry_run=dry_run),
+        check_target_claim_threshold(claim_review=claim_review, dry_run=dry_run),
         check_connector_health(warnings=warnings),
+        check_facet_coverage(facet_coverage or {}, dry_run=dry_run),
+        check_repair_bounds(repair_record or {}, dry_run=dry_run),
     ]
     feedback_actions = build_feedback_actions(
         status=status,
@@ -332,13 +356,17 @@ def build_loop_record(
             "query_plan": "query_plan.json",
             "execution": "collection_execution.json",
             "evidence": "evidence.jsonl",
+            "chunks": "chunks.jsonl",
             "quality": "evidence_quality.json",
+            "facet_coverage": "facet_coverage.json",
+            "repair": "repair_record.json",
             "claims": "claim_review.json",
             "decision": "decision_brief.json",
         },
         "critic_summary": {
             "stance": (claim_review.get("overall") or {}).get("stance"),
             "confidence": (claim_review.get("overall") or {}).get("confidence"),
+            "support_level": (claim_review.get("overall") or {}).get("support_level"),
             "action_bias": decision_brief.get("action_bias"),
             "average_quality_score": quality_report.get("average_quality_score"),
             "conflict_flag_count": len(quality_report.get("conflict_flags") or []),
@@ -579,12 +607,41 @@ def check_claim_grounding(*, claim_review: dict[str, Any], dry_run: bool) -> dic
             "Evidence was collected, but no pack-specific claim buckets were proven.",
             "Add claim specs or run a human/LLM analysis pass before treating this as decision-ready.",
         )
+    if stance == "needs_more_evidence":
+        return warn(
+            "claim_grounding",
+            "Eligible evidence did not meet the pack claim thresholds.",
+            "Collect claim-eligible evidence before treating this run as decision-ready.",
+        )
+    if stance == "conflicted":
+        return warn(
+            "claim_grounding",
+            "Claim citations overlap unresolved opposing evidence.",
+            "Reconcile the opposing evidence before taking action.",
+        )
     if stance and stance != "no_evidence_collected":
         return passed("claim_grounding", f"Claim review stance is {stance}.")
     return fail(
         "claim_grounding",
         "Claim review has no collected evidence.",
         "Do not pass this run to final LLM analysis.",
+    )
+
+
+def check_target_claim_threshold(
+    *, claim_review: dict[str, Any], dry_run: bool
+) -> dict[str, Any]:
+    if claim_review.get("schema_version") != "target_claim_review.v1":
+        return skipped("target_claim_threshold", "Run does not use the structured target contract.")
+    if dry_run:
+        return skipped("target_claim_threshold", "Dry run stopped before target claim gates.")
+    support_level = str((claim_review.get("overall") or {}).get("support_level") or "")
+    if support_level and support_level != "baseline_only":
+        return passed("target_claim_threshold", f"Target support level is {support_level}.")
+    return warn(
+        "target_claim_threshold",
+        "No current final official JD passed the complete target tuple gates.",
+        "Keep downstream coaching at baseline_only and retry official discovery later.",
     )
 
 
@@ -596,6 +653,38 @@ def check_connector_health(*, warnings: list[str]) -> dict[str, Any]:
         f"{len(warnings)} warning(s) recorded.",
         "Run research-engine doctor and repair optional connector setup if coverage matters.",
     )
+
+
+def check_facet_coverage(
+    coverage: dict[str, Any], *, dry_run: bool
+) -> dict[str, Any]:
+    if dry_run:
+        return skipped("facet_coverage", "Dry run stopped before relevant-yield checks.")
+    missing = list(coverage.get("missing_required_facets") or [])
+    if not missing:
+        return passed("facet_coverage", "All planned required facets have relevant yield.")
+    return warn(
+        "facet_coverage",
+        "Missing relevant yield for required facet(s): " + ", ".join(missing) + ".",
+        "Review the recorded repair pass and collect targeted primary evidence if needed.",
+    )
+
+
+def check_repair_bounds(
+    repair_record: dict[str, Any], *, dry_run: bool
+) -> dict[str, Any]:
+    if dry_run:
+        return skipped("repair_bounds", "Dry run did not execute a repair pass.")
+    pass_id = str(repair_record.get("pass_id") or "")
+    if pass_id not in {"", "pass-2"}:
+        return fail(
+            "repair_bounds",
+            f"Unexpected repair pass id: {pass_id}.",
+            "Stop after the single allowed pass-2 repair.",
+        )
+    if repair_record.get("attempted"):
+        return passed("repair_bounds", "Exactly one bounded pass-2 repair was recorded.")
+    return passed("repair_bounds", "No repair was required or available.")
 
 
 def build_feedback_actions(
@@ -670,6 +759,8 @@ def stop_reason(*, status: str, dry_run: bool, check_results: list[dict[str, Any
         return f"critical_check_failed:{failed[0].get('check_id')}"
     warned = [result for result in check_results if result.get("status") == "warn"]
     if warned:
+        if any(result.get("check_id") == "target_claim_threshold" for result in warned):
+            return "target_evidence_threshold_not_met"
         return "completed_with_review_required"
     return "acceptance_checks_passed"
 

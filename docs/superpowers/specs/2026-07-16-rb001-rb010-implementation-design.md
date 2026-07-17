@@ -33,6 +33,10 @@ Quality scoring applies a shared deterministic eligibility check. Invalid rows r
 
 Synthesis filters documents through the same eligibility check. Pack claims, generic claims, and matrix nodes therefore cannot cite invalid evidence.
 
+Structured-target claims use the same eligibility gate. Browser-rendered invalid
+content cannot replace a valid static response, and short non-web evidence is not
+subjected to the web-shell length rule.
+
 Compatibility:
 
 - fetch_text still returns str.
@@ -51,12 +55,17 @@ The first fixed corpus targets the exact RB-001 failure:
 - network-security block page
 - HTTP 404 body
 - raw PDF bytes
+- simulated DNS/transport failure
 
-The eval uses deterministic in-memory rows and connector response fixtures; it performs no network access. It writes a JSON scorecard under a caller-supplied output directory and exits nonzero unless:
+The eval uses deterministic fake transport responses through the real web connector;
+it performs no network access. It writes a JSON scorecard under a caller-supplied
+output directory and exits nonzero unless:
 
 - all four invalid probes are detected;
 - valid HTML remains eligible;
 - no invalid evidence ID appears in claim or matrix output;
+- invalid evidence is excluded from generic claims, pack claims, structured-target
+  claims, matrices, and conflict flags;
 - invalid rows stay present for observability.
 
 This is the M0 seed, not a general benchmark framework. New benchmark cases can be added only when another backlog item requires a measurable regression.
@@ -89,4 +98,3 @@ Expected changes are limited to:
 Success: tests, eval, and lint pass; independent Fable review has no unresolved correctness finding.
 
 Stop and report: the implementation requires a new dependency, a destructive rewrite of existing user changes, or acceptance cannot be met without expanding beyond RB-001/RB-010.
-

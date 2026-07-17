@@ -4,7 +4,7 @@
 
 **Scope:** RB-002, RB-003, RB-004, and RB-019
 
-**Status:** Approved design awaiting written-spec review
+**Status:** Implemented; independently reviewed and approved
 
 ## Goal
 
@@ -99,6 +99,10 @@ The quality report records:
 - a warning if rows passed directly into the quality layer still contain a
   collision.
 
+The existing `unique_evidence_count` keeps its content-deduplication meaning;
+ID uniqueness uses the new fields so existing consumers do not silently change
+semantics.
+
 The runner must produce zero collisions. The quality-layer check remains as a
 guard for library callers and future connector regressions.
 
@@ -107,8 +111,9 @@ guard for library callers and future connector regressions.
 Content validity and claim eligibility are separate predicates:
 
 - `is_evidence_eligible` continues to mean the fetched content is usable;
-- `is_claim_eligible` additionally rejects discovery-only rows, initially
-  `source_kind == "platform_search_page"`.
+- `is_claim_eligible` additionally rejects discovery-only rows identified by
+  platform source kind/id, `source_class == "discovery_only"`, or a structured
+  target `claim_fitness.disposition` other than `accepted`.
 
 Claims, supply/demand matrix nodes, and conflict matching use
 `is_claim_eligible`. Discovery rows remain in `evidence.jsonl` and quality
@@ -147,9 +152,15 @@ Each parsed research `run` CLI invocation appends one JSON object to
 - engine `run_status` on success;
 - redacted error type and message on failure.
 
+Redaction covers compound sensitive assignment keys such as `client_secret`
+and `aws_secret_access_key`, plus embedded known Authorization credential
+schemes, while preserving ordinary insurance, payment, and prior-authorization
+prose.
+
 The append helper creates the parent directory and performs one encoded-line
 write through `O_APPEND`. Journal write failure is surfaced as a CLI error; it
-is never silently ignored. Size-based rotation is deferred until journal growth
+is never silently ignored, and no success JSON is printed until the success
+journal entry is durable. Size-based rotation is deferred until journal growth
 is measured because rotation would weaken the simple append-only contract.
 
 ## Data Flow
@@ -206,7 +217,9 @@ Unit and integration tests will prove:
 10. sensitive split flags and embedded secret assignments are redacted from
     the journal;
 11. a failed engine invocation writes a non-zero journal record;
-12. the full unit suite, Ruff, `make eval`, and a local repeated-run smoke pass.
+12. a journal append failure emits no success payload;
+13. non-credential authorization prose remains unchanged;
+14. the full unit suite, Ruff, `make eval`, and a local repeated-run smoke pass.
 
 ## Loop Contract
 

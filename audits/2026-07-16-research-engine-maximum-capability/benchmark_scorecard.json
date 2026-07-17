@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-07-16T14:02:00-07:00",
+  "scale": "0-5; 'unavailable' = not measurable from artifacts",
+  "headline_scores": {
+    "B1_fast_market": {"score": 2, "summary": "real-time quotes OK; stale seeds unflagged; claims grounded in junk rows"},
+    "B2_deep_technical": {"score": 1, "summary": "zero technical content; canonical repos never found even after repair"},
+    "B3_contested_topic": {"score": 2, "summary": "conflict flag fired but chains self-referential; synthesis ignores conflict"},
+    "B4_niche_no_pack": {"score": 1, "summary": "honest failed_no_sources; repair found nothing; repair overwrote pass-1 artifacts"},
+    "B5_github_survey": {"score": 1, "summary": "sort=updated noise; canonical projects absent; no license/release/maintenance fields"},
+    "B6_adversarial": {"score": 1, "summary": "1/5 failure modes detected; login wall, block page, 404, PDF binary accepted as high-quality evidence"},
+    "B7_longitudinal": {"score": 3, "summary": "same-day cache hits work; no TTL, no cross-day reuse, no diff; rerun overwrote B1 run dir"},
+    "B8_mixed_formats": {"score": 1, "summary": "evidence_id collisions; PDF binary + flattened table + '404: Not Found' rows all tier high"}
+  },
+  "dimension_medians_across_benchmarks": {
+    "task_understanding": 2, "source_discovery": 1, "primary_source_ratio": 2,
+    "freshness_compliance": 1, "relevant_evidence_yield": 1, "domain_diversity": 2,
+    "extraction_quality": 2, "duplicate_suppression": 3, "conflict_handling": 2,
+    "claim_to_citation_coverage": 1, "citation_validity": 2, "artifact_completeness": 5,
+    "failure_transparency": 1, "bounded_self_repair": 0, "reproducibility": 3,
+    "latency_telemetry": 5, "cost": "unavailable", "external_fallback_dependence": 5
+  },
+  "strongest_dimensions": ["artifact_completeness (11-file bundle always written)", "latency telemetry (per-request elapsed_ms)", "explicit stop reasons on hard failures", "safety/SSRF/redaction", "no external fallback needed to run (engine always executes)"],
+  "weakest_dimensions": ["bounded_self_repair (0 - advisory only)", "failure_transparency on soft failures (block/login/404/binary pages score high)", "claim grounding (keyword buckets cite junk)", "freshness (no published_at extraction, no windows)", "source discovery (no web search; github sort=updated)"],
+  "evidence_refs": "benchmarks/B1..B8/notes.md; runs/2026-07-16-* artifact bundles; commands.jsonl",
+  "caveats": ["B1 raw run dir later overwritten by B7 (documented incident; numbers preserved in B1 notes)", "xAI discovery and bridge connectors untestable on this machine (no keys/CLIs) — degradation behavior verified instead"]
+}

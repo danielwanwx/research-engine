@@ -1,0 +1,53 @@
+{
+  "b1": {
+    "as_of": "2026-07-16",
+    "window_days": 30,
+    "row": {
+      "evidence_id": "b1-stale",
+      "connector": "web_page",
+      "title": "Memory price update",
+      "url": "https://trend.example/2026/05/01/memory",
+      "text": "Memory contract prices increased in this historical market update.",
+      "published_at": "2026-05-01"
+    }
+  },
+  "b2": {"topic": "vLLM versus SGLang inference engines"},
+  "b3": {
+    "rows": [
+      {"evidence_id": "b3-support", "url": "https://vendor.example/report", "text": "Independent support evidence", "content_valid": true, "claim_eligible": true, "claim_polarity": "support"},
+      {"evidence_id": "b3-oppose", "url": "https://analyst.example/report", "text": "Independent opposition evidence", "content_valid": true, "claim_eligible": true, "claim_polarity": "oppose"}
+    ]
+  },
+  "b4": {
+    "topic": "JSON Canvas specification and adopters",
+    "results": [
+      {"title": "JSON Canvas Spec", "url": "https://jsoncanvas.org/spec/1.0/", "snippet": "Open JSON Canvas specification"},
+      {"title": "obsidianmd/jsoncanvas", "url": "https://github.com/obsidianmd/jsoncanvas", "snippet": "Canonical specification repository"},
+      {"title": "JSON Canvas apps", "url": "https://jsoncanvas.org/docs/apps/", "snippet": "Adopter applications"}
+    ]
+  },
+  "b5": {
+    "query": "deep research agent",
+    "repositories": [
+      {"title": "noise/weather", "text": "weather dashboard", "topics": [], "archived": false, "pushed_at": "2026-07-01T00:00:00Z", "license_spdx": "MIT", "raw_api_rank": 1, "metrics": {"stars": 500000, "forks": 1000}},
+      {"title": "openai/deep-research", "text": "deep research agent with auditable sources", "topics": ["deep-research", "agents"], "archived": false, "pushed_at": "2026-07-10T00:00:00Z", "license_spdx": "MIT", "raw_api_rank": 2, "metrics": {"stars": 12000, "forks": 900}},
+      {"title": "langchain-ai/open_deep_research", "text": "open deep research agent", "topics": ["deep-research"], "archived": false, "pushed_at": "2026-06-20T00:00:00Z", "license_spdx": "MIT", "raw_api_rank": 3, "metrics": {"stars": 9000, "forks": 700}}
+    ]
+  },
+  "b8": {
+    "html": "<html><body><h1>Market data</h1><p>Substantive mixed-format evidence for extraction.</p><table><tr><th>Vendor</th><th>Product</th></tr><tr><td>Micron</td><td>HBM3E</td></tr></table></body></html>",
+    "pdf_text": "Extracted PDF evidence with a stable parent chunk."
+  },
+  "b9": {
+    "topic": "AI inference market landscape",
+    "scope": {"schema_version": "research_scope.v1", "profile": "market_landscape", "as_of": "2026-07-16", "filters": {"geography": ["US"], "definition": ["hosted AI inference platforms"]}}
+  },
+  "b10": {
+    "scope": {"schema_version": "research_scope.v1", "profile": "job_market", "as_of": "2026-07-16", "filters": {"geography": ["US"], "role_terms": ["AI Engineer"], "levels": ["senior"], "companies": ["Anthropic", "OpenAI"]}},
+    "rows": [
+      {"evidence_id": "b10-1", "company": "Anthropic", "title": "Senior AI Engineer", "role_family": "machine_learning", "level": "senior", "geography": "US", "skills": ["Python"], "url": "https://jobs.example/req-1", "requisition_id": "req-1", "source_class": "official_jd", "current_status": "active", "is_final_page": true, "content_valid": true, "claim_eligible": true, "claim_fitness": {"disposition": "accepted", "rejection_reasons": []}},
+      {"evidence_id": "b10-2", "company": "Anthropic", "title": "Senior AI Engineer", "role_family": "machine_learning", "level": "senior", "geography": "US", "skills": ["Python"], "url": "https://jobs.example/req-1?source=copy", "requisition_id": "req-1", "source_class": "official_jd", "current_status": "active", "is_final_page": true, "content_valid": true, "claim_eligible": true, "claim_fitness": {"disposition": "accepted", "rejection_reasons": []}},
+      {"evidence_id": "b10-3", "company": "OpenAI", "title": "Senior AI Engineer", "geography": "US", "url": "https://jobs.example/closed", "source_class": "official_jd", "current_status": "closed", "is_final_page": true, "content_valid": true, "claim_eligible": true}
+    ]
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "id": "interview_prep",
+  "label": "Interview preparation target research",
+  "profile": "interview_prep",
+  "intent": "interview_target_research",
+  "match_terms": [
+    "interview",
+    "interview loop",
+    "interview process",
+    "hiring",
+    "hiring bar",
+    "recruiter",
+    "onsite",
+    "coding interview",
+    "system design interview",
+    "behavioral interview",
+    "job description",
+    "role expectations"
+  ],
+  "query_templates": [
+    {"tier": "public_connector", "template": "{topic} interview"},
+    {"tier": "process", "template": "{topic} interview process loop stages"},
+    {"tier": "rubric", "template": "{topic} interview questions evaluation rubric hiring bar"},
+    {"tier": "role_depth", "template": "{topic} required skills seniority expectations"},
+    {"tier": "candidate_signal", "template": "{topic} candidate experience Glassdoor Blind Reddit"}
+  ],
+  "sources": [
+    {
+      "source_id": "github_interview_repos",
+      "connector": "web_page",
+      "label": "Public GitHub interview preparation resources",
+      "source_kind": "public_repo",
+      "pages": [
+        {"url": "https://raw.githubusercontent.com/donnemartin/system-design-primer/master/README.md", "title": "System Design Primer", "publisher": "github", "source_confidence": "high"},
+        {"url": "https://raw.githubusercontent.com/jwasham/coding-interview-university/main/README.md", "title": "Coding Interview University", "publisher": "github", "source_confidence": "high"},
+        {"url": "https://raw.githubusercontent.com/Olshansk/interview/master/README.md", "title": "Interview Preparation Resources", "publisher": "github", "source_confidence": "high"},
+        {"url": "https://raw.githubusercontent.com/yangshun/tech-interview-handbook/main/contents/coding-interview-techniques.md", "title": "Tech Interview Handbook - Coding Techniques", "publisher": "github", "source_confidence": "high"},
+        {"url": "https://raw.githubusercontent.com/yangshun/tech-interview-handbook/main/contents/system-design.md", "title": "Tech Interview Handbook - System Design", "publisher": "github", "source_confidence": "high"}
+      ]
+    },
+    {
+      "source_id": "ai_interview_resources",
+      "connector": "web_page",
+      "label": "ML and AI role interview resources",
+      "source_kind": "public_repo",
+      "pages": [
+        {"url": "https://raw.githubusercontent.com/khangich/machine-learning-interview/master/README.md", "title": "Machine Learning Interview Guide", "publisher": "github", "source_confidence": "high"},
+        {"url": "https://raw.githubusercontent.com/alirezadir/machine-learning-interviews/main/README.md", "title": "ML Interviews Book", "publisher": "github", "source_confidence": "high"},
+        {"url": "https://raw.githubusercontent.com/chiphuyen/ml-interviews-book/main/README.md", "title": "Introduction to ML Interviews", "publisher": "github", "source_confidence": "high"}
+      ]
+    },
+    {
+      "source_id": "company_careers",
+      "connector": "web_page",
+      "label": "Company engineering career pages (Playwright-rendered)",
+      "source_kind": "career_page",
+      "pages": [
+        {"url": "https://www.anthropic.com/careers", "title": "Anthropic Careers", "publisher": "anthropic.com", "source_confidence": "high"},
+        {"url": "https://openai.com/careers/", "title": "OpenAI Careers", "publisher": "openai.com", "source_confidence": "high"},
+        {"url": "https://www.metacareers.com/jobs?q=machine+learning+engineer&divisions[0]=Artificial+Intelligence+%28AI%29", "title": "Meta AI Engineering Jobs", "publisher": "metacareers.com", "source_confidence": "high"}
+      ]
+    }
+  ],
+  "claim_specs": [
+    {
+      "claim_id": "interview_structure",
+      "question": "Is the interview loop structure documented in public evidence?",
+      "keywords": [
+        "interview loop",
+        "onsite",
+        "phone screen",
+        "rounds",
+        "stages",
+        "hiring manager",
+        "recruiter screen"
+      ],
+      "min_evidence": 1
+    },
+    {
+      "claim_id": "evaluation_bar",
+      "question": "Is the evaluation bar or rubric described?",
+      "keywords": [
+        "rubric",
+        "evaluation",
+        "hiring bar",
+        "signal",
+        "leveling",
+        "seniority",
+        "competency"
+      ],
+      "min_evidence": 1
+    },
+    {
+      "claim_id": "common_topics",
+      "question": "Are the commonly tested topics identified?",
+      "keywords": [
+        "system design",
+        "coding",
+        "behavioral",
+        "case study",
+        "take-home",
+        "domain deep dive"
+      ],
+      "min_evidence": 1
+    }
+  ],
+  "matrix_nodes": [
+    {
+      "node_id": "role_requirements",
+      "side": "demand",
+      "label": "Role requirements and hiring bar",
+      "keywords": ["required", "must have", "responsibilities", "expectations", "hiring bar"],
+      "min_evidence": 1
+    },
+    {
+      "node_id": "tested_pressure",
+      "side": "constraint",
+      "label": "Interview pressure and tested topics",
+      "keywords": ["system design", "coding", "behavioral", "deep dive", "case study"],
+      "min_evidence": 1
+    }
+  ],
+  "matrix_entities": {},
+  "decision_rules": {
+    "not_investment_advice": true,
+    "supported_claims_for_supported": 2,
+    "supported_claims_for_high_confidence": 3,
+    "supported_or_partial_for_partial": 1,
+    "action_bias_by_stance": {
+      "supported": "use_target_signals_to_focus_mock_pressure",
+      "partially_supported": "use_partial_signals_and_flag_gaps"
+    },
+    "stance_summaries": {
+      "supported": "{profile_label} target signals are supported across {supported_count} interview claim buckets.",
+      "partially_supported": "{profile_label} target signals are partial ({supported_count} supported, {partial_count} partial).",
+      "default": "Public evidence is not yet sufficient to confirm {profile_label} interview signals."
+    }
+  }
+}

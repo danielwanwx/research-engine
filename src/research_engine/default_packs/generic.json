@@ -4,10 +4,42 @@
   "profile": "generic",
   "intent": "general_research",
   "match_terms": [],
-  "query_templates": [
-    {"tier": "public_connector", "template": "{topic}"},
-    {"tier": "web", "template": "{topic} latest evidence"},
-    {"tier": "social_audit", "template": "{topic}"}
+  "facets": [
+    {
+      "id": "overview",
+      "query_templates": ["{topic} overview"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": null
+    },
+    {
+      "id": "primary_sources",
+      "query_templates": ["{topic} official primary sources"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": null
+    },
+    {
+      "id": "current_evidence",
+      "query_templates": ["{topic} current evidence"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": 365
+    },
+    {
+      "id": "alternatives",
+      "query_templates": ["{topic} alternatives"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": null
+    },
+    {
+      "id": "risks",
+      "query_templates": ["{topic} risks limitations counterevidence"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": null
+    }
   ],
   "sources": []
 }

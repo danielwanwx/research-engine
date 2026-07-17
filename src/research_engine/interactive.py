@@ -200,4 +200,8 @@ def render_result(result: ResearchRunResult, *, output_func: OutputFunc) -> None
     output_func("")
     output_func("Artifacts:")
     output_func(f"- {result.run_dir}/research_report.md")
+    if result.pdf_report_path:
+        output_func(f"- {result.pdf_report_path}")
+    else:
+        output_func(f"- PDF report: {result.pdf_report_status or 'failed'}")
     output_func(f"- {result.run_dir}/loop_record.json")

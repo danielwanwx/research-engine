@@ -1,0 +1,7 @@
+{
+  "schema_version": "research_engine.benchmark.v2",
+  "offline_ci_gate": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10"],
+  "fixture": "fixtures/benchmarks.json",
+  "m0_fixture": "../v1/fixtures/adversarial_rows.json",
+  "acceptance": "all B1-B10 pass and M0 remains 9/9 with 5/5 invalid probes detected"
+}

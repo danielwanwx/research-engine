@@ -1,0 +1,339 @@
+{
+  "schema_version": "query_plan.v2",
+  "profile": "generic",
+  "depth": "quick",
+  "search_provider": "none",
+  "search_endpoint": "",
+  "third_party_query_boundary": false,
+  "budget": {
+    "max_queries": 3,
+    "max_results_per_query": 5,
+    "max_canonical_refetches": 8,
+    "max_repair_passes": 1
+  },
+  "facets": [
+    "public_connector",
+    "web",
+    "social_audit"
+  ],
+  "queries": [
+    {
+      "facet_id": "public_connector",
+      "query_id": "q-0001",
+      "query": "immutable eval rerun",
+      "source_types": [
+        "web_search"
+      ],
+      "required": true,
+      "freshness_window_days": null,
+      "max_results": 5,
+      "status": "skipped",
+      "skip_reason": "search_provider_disabled"
+    },
+    {
+      "facet_id": "web",
+      "query_id": "q-0002",
+      "query": "immutable eval rerun latest evidence",
+      "source_types": [
+        "web_search"
+      ],
+      "required": true,
+      "freshness_window_days": null,
+      "max_results": 5,
+      "status": "skipped",
+      "skip_reason": "search_provider_disabled"
+    },
+    {
+      "facet_id": "social_audit",
+      "query_id": "q-0003",
+      "query": "immutable eval rerun",
+      "source_types": [
+        "web_search"
+      ],
+      "required": true,
+      "freshness_window_days": null,
+      "max_results": 5,
+      "status": "skipped",
+      "skip_reason": "search_provider_disabled"
+    }
+  ],
+  "scope": null,
+  "claim_context": {},
+  "quantitative_claims_allowed": true,
+  "topic": "immutable eval rerun",
+  "artifact_contract": "research_engine.v2",
+  "target": null,
+  "pack": {
+    "id": "generic",
+    "label": "Generic research",
+    "intent": "general_research",
+    "profile": "generic"
+  },
+  "as_of": "2026-07-16",
+  "max_results_per_source": 3,
+  "platform_scope": "broad",
+  "platform_research_plan": [
+    {
+      "platform": "web",
+      "label": "Open web",
+      "category": "web",
+      "access_mode": "public",
+      "preferred_connector": "web_page_or_agent_reach",
+      "search_url_template": "https://www.google.com/search?q={query}",
+      "query_suffixes": [
+        "latest evidence",
+        "official source",
+        "primary data"
+      ],
+      "scopes": [
+        "quick",
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": false,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun latest evidence official source",
+      "search_url": "https://www.google.com/search?q=immutable+eval+rerun+latest+evidence+official+source",
+      "enabled_by_default": true
+    },
+    {
+      "platform": "x",
+      "label": "X / Twitter",
+      "category": "social",
+      "access_mode": "logged_in_or_agent_reach",
+      "preferred_connector": "agent_reach_or_external",
+      "search_url_template": "https://x.com/search?q={query}&src=typed_query&f=live",
+      "query_suffixes": [
+        "discussion",
+        "thread",
+        "checks"
+      ],
+      "scopes": [
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": true,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun discussion thread",
+      "search_url": "https://x.com/search?q=immutable+eval+rerun+discussion+thread&src=typed_query&f=live",
+      "enabled_by_default": false
+    },
+    {
+      "platform": "reddit",
+      "label": "Reddit",
+      "category": "forum",
+      "access_mode": "public_or_agent_reach",
+      "preferred_connector": "agent_reach_or_external",
+      "search_url_template": "https://www.reddit.com/search/?q={query}&sort=new",
+      "query_suffixes": [
+        "site:reddit.com discussion",
+        "reddit comments"
+      ],
+      "scopes": [
+        "quick",
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": false,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun site:reddit.com discussion reddit comments",
+      "search_url": "https://www.reddit.com/search/?q=immutable+eval+rerun+site%3Areddit.com+discussion+reddit+comments&sort=new",
+      "enabled_by_default": true
+    },
+    {
+      "platform": "hackernews",
+      "label": "Hacker News",
+      "category": "forum",
+      "access_mode": "public",
+      "preferred_connector": "web_or_external",
+      "search_url_template": "https://hn.algolia.com/?q={query}",
+      "query_suffixes": [
+        "hacker news",
+        "hn discussion"
+      ],
+      "scopes": [
+        "quick",
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": false,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun hacker news hn discussion",
+      "search_url": "https://hn.algolia.com/?q=immutable+eval+rerun+hacker+news+hn+discussion",
+      "enabled_by_default": true
+    },
+    {
+      "platform": "github",
+      "label": "GitHub",
+      "category": "developer",
+      "access_mode": "public_or_gh_auth",
+      "preferred_connector": "agent_reach_or_external",
+      "search_url_template": "https://github.com/search?q={query}&type=repositories&s=updated&o=desc",
+      "query_suffixes": [
+        "github",
+        "open source",
+        "repo"
+      ],
+      "scopes": [
+        "quick",
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": false,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun github open source",
+      "search_url": "https://github.com/search?q=immutable+eval+rerun+github+open+source&type=repositories&s=updated&o=desc",
+      "enabled_by_default": true
+    },
+    {
+      "platform": "youtube",
+      "label": "YouTube",
+      "category": "video",
+      "access_mode": "public",
+      "preferred_connector": "agent_reach_or_external",
+      "search_url_template": "https://www.youtube.com/results?search_query={query}",
+      "query_suffixes": [
+        "youtube",
+        "interview",
+        "presentation"
+      ],
+      "scopes": [
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": false,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun youtube interview",
+      "search_url": "https://www.youtube.com/results?search_query=immutable+eval+rerun+youtube+interview",
+      "enabled_by_default": false
+    },
+    {
+      "platform": "linkedin",
+      "label": "LinkedIn",
+      "category": "professional",
+      "access_mode": "logged_in_browser_or_external",
+      "preferred_connector": "external_authorized_capture",
+      "search_url_template": "https://www.linkedin.com/search/results/content/?keywords={query}",
+      "query_suffixes": [
+        "linkedin",
+        "hiring",
+        "company posts"
+      ],
+      "scopes": [
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": true,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun linkedin hiring",
+      "search_url": "https://www.linkedin.com/search/results/content/?keywords=immutable+eval+rerun+linkedin+hiring",
+      "enabled_by_default": false
+    },
+    {
+      "platform": "xiaohongshu",
+      "label": "Xiaohongshu",
+      "category": "china_social",
+      "access_mode": "logged_in_browser_or_agent_reach",
+      "preferred_connector": "agent_reach_or_external",
+      "search_url_template": "https://www.xiaohongshu.com/search_result?keyword={query}",
+      "query_suffixes": [
+        "小红书",
+        "真实体验",
+        "讨论"
+      ],
+      "scopes": [
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": true,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun 小红书 真实体验",
+      "search_url": "https://www.xiaohongshu.com/search_result?keyword=immutable+eval+rerun+%E5%B0%8F%E7%BA%A2%E4%B9%A6+%E7%9C%9F%E5%AE%9E%E4%BD%93%E9%AA%8C",
+      "enabled_by_default": false
+    },
+    {
+      "platform": "lenny",
+      "label": "Lenny Newsletter",
+      "category": "newsletter",
+      "access_mode": "external_authorized_capture",
+      "preferred_connector": "external_jsonl",
+      "search_url_template": "https://www.google.com/search?q={query}+site%3Alennysnewsletter.com",
+      "query_suffixes": [
+        "Lenny newsletter",
+        "founder operator discussion"
+      ],
+      "scopes": [
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": true,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun Lenny newsletter founder operator discussion",
+      "search_url": "https://www.google.com/search?q=immutable+eval+rerun+Lenny+newsletter+founder+operator+discussion+site%3Alennysnewsletter.com",
+      "enabled_by_default": false
+    },
+    {
+      "platform": "rss",
+      "label": "RSS / Atom",
+      "category": "feed",
+      "access_mode": "public",
+      "preferred_connector": "rss_or_external",
+      "search_url_template": "",
+      "query_suffixes": [
+        "rss",
+        "official blog",
+        "changelog"
+      ],
+      "scopes": [
+        "quick",
+        "broad",
+        "deep",
+        "all"
+      ],
+      "requires_login": false,
+      "risk": "medium",
+      "notes": [],
+      "query": "immutable eval rerun rss official blog",
+      "search_url": "",
+      "enabled_by_default": false
+    }
+  ],
+  "collection_modes": {
+    "structured_target": false,
+    "official_job_discovery": false,
+    "xai_discovery": false,
+    "external_evidence": false,
+    "agent_reach": false,
+    "opencli": false,
+    "github_public": false,
+    "web_search_pages": false,
+    "web_search": false
+  },
+  "agent_reach_commands": [],
+  "external_evidence_paths": [],
+  "sources": [],
+  "query_reconciliation": {
+    "planned": 3,
+    "executed": 0,
+    "failed": 0,
+    "skipped": 3
+  }
+}

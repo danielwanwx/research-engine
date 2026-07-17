@@ -72,6 +72,38 @@ research-engine run "research DRAM HBM supply shortage" --pack auto --depth deep
 research-engine run "research Lenny memory discussion" --external-evidence exports/lenny.jsonl --output runs
 ```
 
+Unseeded CLI runs use anonymous AnySearch discovery by default. Query text crosses
+that third-party boundary, which is recorded in `query_plan.json`. Opt out with
+`--search-provider none`, or use an explicit SearXNG instance with
+`--search-provider searxng --search-endpoint https://search.example.org/search`.
+
+M2 profile examples:
+
+```bash
+# technical comparison with per-project GitHub facets
+research-engine run "vLLM versus SGLang inference engines" --pack technical --depth deep
+
+# explicit point-in-time market scope
+research-engine run "AI inference market landscape" --pack market_landscape \
+  --scope-file scopes/inference-market.json --as-of 2026-07-16
+
+# scoped point-in-time job snapshot; quantitative counts require the scope file
+research-engine run "AI engineer job market" --pack job_market \
+  --scope-file scopes/ai-engineer-jobs.json --as-of 2026-07-16
+```
+
+See [M2 usage and scope contracts](docs/m2-usage.md) for complete scope examples,
+freshness semantics, and repair limits.
+
+For current job-description and interview evidence, use the complete structured target tuple. See [Structured target intelligence](docs/target-intelligence.md) for the evidence and consumer contract.
+
+```bash
+research-engine run "Stripe Staff Backend Engineer US" --pack interview_prep \
+  --target-company Stripe --target-role-family software_engineering \
+  --target-role-title "Staff Backend Engineer" --target-level staff \
+  --target-geography US --output runs
+```
+
 Check optional local capabilities:
 
 ```bash
@@ -84,6 +116,7 @@ Run tests:
 
 ```bash
 make check
+make eval  # deterministic offline regression scorecard
 ```
 
 ## Codex Skill
@@ -112,20 +145,41 @@ runs/<timestamp-or-topic>/
 ├── query_plan.json
 ├── collection_execution.json
 ├── evidence.jsonl
+├── chunks.jsonl
 ├── evidence_quality.json
+├── facet_coverage.json
+├── repair_record.json
 ├── claim_review.json
 ├── supply_demand_matrix.json
 ├── decision_brief.json
 ├── loop_contract.json
 ├── loop_record.json
-└── research_report.md
+├── research_report.md
+├── research_report.pdf
+└── pdf_report_status.json
 ```
+
+Rerunning the same topic on the same day creates a suffixed directory such as
+`<date>-<topic>--02`; an existing run bundle is never overwritten. Scripted
+`run` invocations also append a redacted record to `runs/journal.jsonl`.
+Imported evidence receives a unique run-scoped `evidence_id`, while its
+original identifier remains available as `source_evidence_id`.
+
+Every terminal run attempts the PDF export, including dry runs and partial or
+warning outcomes. PDF failure is non-fatal and is disclosed in
+`pdf_report_status.json`, `run_manifest.json`, and CLI output.
 
 Important files:
 
-- `evidence.jsonl` is the normalized source trace an LLM should cite from.
+- `evidence.jsonl` is the normalized parent-source trace; claims may cite it directly
+  or cite stable child IDs in `chunks.jsonl`.
 - `evidence_quality.json` records source tiers, duplicate pressure, and
-  directional conflict flags.
+  independent conflict flags; quality and topical relevance remain separate.
+- `facet_coverage.json` records relevant, claim-eligible yield plus required facets
+  omitted by the selected query budget.
+- `chunks.jsonl` preserves stable parent-linked chunks and extracted table provenance;
+  chunk rows participate in relevance, deduplication, conflicts, and synthesis.
+- `repair_record.json` explains the optional single pass-2 repair and its stop reason.
 - `collection_execution.json` records connector status, retries, warnings,
   cache hits, and row counts.
 - `loop_contract.json` defines the research loop: goal, source scope, checks,
@@ -160,8 +214,10 @@ Built-in connectors include:
 | `manual` | Pack-provided or hand-authored evidence rows |
 | `external_jsonl` | Authorized exports from logged-in tools or private collectors |
 | `web_page` | Static public page fetches from explicit seed URLs |
+| `web_search` | AnySearch or explicit SearXNG discovery; snippets are never claim evidence |
 | `finance_quote` | Public quote snapshots for configured tickers |
 | `github_public_search` | Public GitHub repository search fallback |
+| `official_job_discovery` | Scoped official ATS/company-career discovery |
 | `agent_reach_bridge` | Optional AgentReach/upstream CLI bridge output |
 | `opencli_bridge` | Optional OpenCLI read-only adapter output |
 
@@ -248,8 +304,10 @@ runner remains source-agnostic.
 
 Research Engine is alpha software.
 
-- Built-in web collection fetches explicit public pages; it is not yet a broad
-  crawler.
+- Web discovery is bounded search plus canonical refetch, not a broad crawler.
+- Search snippets are discovery-only; only valid canonical refetches can support claims.
+- PDF extraction uses an allowlisted local `pdftotext` when available and otherwise
+  records an explicit invalid reason.
 - Optional bridge connectors depend on local tools being installed and configured.
 - Logged-in or paid sources must be provided as authorized exports, not raw
   credentials.
@@ -279,7 +337,7 @@ python -m ruff check src tests
   support QA, and code migration research.
 - Stronger source registries, citation graph checks, and pack-specific
   contradiction rules.
-- Repair passes that can revise a source plan when coverage is weak.
+- Richer repair strategies beyond the single bounded pass-2 rule.
 - Persistent loop memory for repeated research programs.
 - More connector bridges for authorized platform exports.
 - Public examples and benchmark tasks for evidence quality and synthesis quality.

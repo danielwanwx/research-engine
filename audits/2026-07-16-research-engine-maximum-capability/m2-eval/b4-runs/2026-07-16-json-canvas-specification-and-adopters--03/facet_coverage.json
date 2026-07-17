@@ -1,0 +1,73 @@
+{
+  "schema_version": "facet_coverage.v1",
+  "required_facets": 5,
+  "required_facets_covered": 1,
+  "missing_required_facets": [
+    "overview",
+    "current_evidence",
+    "alternatives",
+    "risks"
+  ],
+  "omitted_required_facets": [
+    "alternatives",
+    "risks"
+  ],
+  "relevance_threshold": 0.15,
+  "facets": [
+    {
+      "facet_id": "overview",
+      "required": true,
+      "planned": true,
+      "query_ids": [
+        "q-0001"
+      ],
+      "relevant_yield_count": 0,
+      "evidence_ids": [],
+      "status": "missing"
+    },
+    {
+      "facet_id": "primary_sources",
+      "required": true,
+      "planned": true,
+      "query_ids": [
+        "q-0002"
+      ],
+      "relevant_yield_count": 3,
+      "evidence_ids": [
+        "chunk-0321270538709df4",
+        "chunk-e7493378ecc1fb8f",
+        "chunk-604d1a68b91fe07e"
+      ],
+      "status": "covered"
+    },
+    {
+      "facet_id": "current_evidence",
+      "required": true,
+      "planned": true,
+      "query_ids": [
+        "q-0003"
+      ],
+      "relevant_yield_count": 0,
+      "evidence_ids": [],
+      "status": "missing"
+    },
+    {
+      "facet_id": "alternatives",
+      "required": true,
+      "planned": false,
+      "query_ids": [],
+      "relevant_yield_count": 0,
+      "evidence_ids": [],
+      "status": "omitted_by_budget"
+    },
+    {
+      "facet_id": "risks",
+      "required": true,
+      "planned": false,
+      "query_ids": [],
+      "relevant_yield_count": 0,
+      "evidence_ids": [],
+      "status": "omitted_by_budget"
+    }
+  ]
+}

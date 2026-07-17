@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-07-17T04:47:17.853471+00:00",
+  "topic": "vLLM versus SGLang inference engines",
+  "profile": "generic",
+  "decision_type": "technical_research",
+  "headline": "Collected 2 eligible row(s) from 2 total across 1 connector(s).",
+  "stance": "evidence_collected_needs_analysis",
+  "confidence": "medium",
+  "action_bias": "analyze_before_action",
+  "rationale": [
+    "0 claim buckets are supported.",
+    "Matrix gap assessment: not_applicable."
+  ],
+  "not_investment_advice": false,
+  "not_professional_advice": true
+}

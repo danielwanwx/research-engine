@@ -1,0 +1,71 @@
+{
+  "id": "technical",
+  "label": "Technical and repository research",
+  "profile": "technical",
+  "intent": "technical_research",
+  "match_terms": [
+    "technical architecture",
+    "technical comparison",
+    "github repository",
+    "github repositories",
+    "open source repository",
+    "vllm",
+    "sglang",
+    "llm inference engine"
+  ],
+  "min_match_score": 1,
+  "facets": [
+    {
+      "id": "official_docs",
+      "query_templates": ["{topic} official documentation"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": null
+    },
+    {
+      "id": "repositories",
+      "query_templates": ["{topic} GitHub repository"],
+      "source_types": ["github_public_search"],
+      "required": true,
+      "freshness_window_days": null
+    },
+    {
+      "id": "releases",
+      "query_templates": ["{topic} releases maintenance"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": 365
+    },
+    {
+      "id": "architecture",
+      "query_templates": ["{topic} architecture design"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": null
+    },
+    {
+      "id": "performance",
+      "query_templates": ["{topic} independent performance benchmark"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": 365
+    },
+    {
+      "id": "limitations",
+      "query_templates": ["{topic} limitations issues"],
+      "source_types": ["web_search"],
+      "required": true,
+      "freshness_window_days": null
+    }
+  ],
+  "source_strategy": {
+    "primary": ["official_documentation", "canonical_repository", "release"],
+    "independent": ["benchmark", "technical_analysis"],
+    "repository_metadata_is_technical_evidence": false
+  },
+  "sources": [],
+  "claim_specs": [],
+  "matrix_nodes": [],
+  "matrix_entities": {},
+  "decision_rules": {}
+}

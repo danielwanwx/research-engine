@@ -345,9 +345,9 @@ Aggregate job analysis accepts an optional `research_scope.v1` document:
   "as_of": "2026-07-16",
   "filters": {
     "geography": ["US"],
-    "role_terms": ["AI Engineer", "Forward Deployed Engineer"],
-    "levels": ["senior", "staff"],
-    "companies": ["matrix"]
+    "role_terms": ["AI Engineer"],
+    "levels": ["senior"],
+    "companies": ["Anthropic", "OpenAI"]
   }
 }
 ```
@@ -356,6 +356,11 @@ Natural-language runs may use a profile's broad search facets, but quantitative 
 market conclusions require an explicit scope. The Codex skill may translate user
 intent into this scope; the core does not pretend to infer ambiguous geography or
 level reliably.
+
+The quantitative contract accepts multiple bounded companies, while geography,
+role terms, and levels are singleton axes. This makes every company request share the
+same explicit denominator and prevents uncollected cross-products from appearing
+covered.
 
 `job_market_snapshot.json` records:
 

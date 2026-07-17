@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-07-17T04:49:40.694707+00:00",
+  "topic": "AI inference market landscape",
+  "profile": "generic",
+  "overall": {
+    "stance": "evidence_collected_needs_analysis",
+    "confidence": "medium",
+    "summary": "Collected 7 eligible row(s) from 14 total across 1 connector(s).",
+    "risk_flags": [
+      "7 discovery-only evidence row(s) excluded from claims.",
+      "7 duplicate evidence row(s) detected across 7 cluster(s)."
+    ]
+  },
+  "claims": [
+    {
+      "claim_id": "topic-main",
+      "question": "AI inference market landscape",
+      "verdict": "evidence_collected_needs_analysis",
+      "evidence_ids": [
+        "chunk-f7a61e662622f45b",
+        "chunk-a69e8dd20ae41798",
+        "chunk-ee4d2d629ea2a4e1",
+        "chunk-e525141d4ec307ed",
+        "chunk-b96a926917f9105b",
+        "chunk-ed15d7410b27fc4c",
+        "chunk-b204343712b2d4d0"
+      ],
+      "source_mix": {
+        "web_page": 7
+      },
+      "evidence_chains": {
+        "claim_id": "topic-main",
+        "stance": "needs_more_evidence",
+        "confidence_ceiling": "low",
+        "minimum_independent_support": 2,
+        "support_chain": {
+          "evidence_ids": [],
+          "independence_keys": [],
+          "independent_source_count": 0
+        },
+        "opposition_chain": {
+          "evidence_ids": [],
+          "independence_keys": [],
+          "independent_source_count": 0
+        }
+      },
+      "claim_context": {
+        "as_of": "2026-07-16",
+        "definition": [
+          "hosted AI inference platforms"
+        ],
+        "geography": [
+          "US"
+        ]
+      }
+    }
+  ],
+  "connector_warnings": [
+    "7 discovery-only evidence row(s) excluded from claims.",
+    "7 duplicate evidence row(s) detected across 7 cluster(s)."
+  ],
+  "claim_context": {
+    "as_of": "2026-07-16",
+    "definition": [
+      "hosted AI inference platforms"
+    ],
+    "geography": [
+      "US"
+    ]
+  }
+}

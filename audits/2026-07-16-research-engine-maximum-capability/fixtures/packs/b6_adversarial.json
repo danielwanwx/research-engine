@@ -1,0 +1,13 @@
+{
+  "id": "b6_adversarial",
+  "label": "B6 adversarial fetch audit",
+  "intent": "general_research",
+  "match_terms": ["adversarial fetch degradation audit"],
+  "web_pages": [
+    {"url": "https://x.com/search?q=DRAM%20price&f=live", "title": "X search (bot-gated probe)", "publisher": "X", "source_confidence": "medium"},
+    {"url": "https://www.reddit.com/search/?q=research+agents", "title": "Reddit search (JS/block probe)", "publisher": "Reddit", "source_confidence": "medium"},
+    {"url": "https://example.com/nonexistent-audit-page-404", "title": "404 probe", "publisher": "example.com", "source_confidence": "low"},
+    {"url": "https://nonexistent-domain-audit-x9f3k2q.invalid/page", "title": "DNS failure probe", "publisher": "invalid", "source_confidence": "low"},
+    {"url": "https://arxiv.org/pdf/2005.11401", "title": "PDF probe (RAG paper)", "publisher": "arXiv", "source_confidence": "high"}
+  ]
+}

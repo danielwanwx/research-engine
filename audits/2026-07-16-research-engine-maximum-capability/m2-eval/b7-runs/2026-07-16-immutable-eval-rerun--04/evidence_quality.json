@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-07-17T04:32:47.907033+00:00",
+  "topic": "immutable eval rerun",
+  "pack_id": "generic",
+  "row_count": 0,
+  "invalid_evidence_count": 0,
+  "claim_ineligible_count": 0,
+  "unique_evidence_id_count": 0,
+  "evidence_id_collision_count": 0,
+  "unique_evidence_count": 0,
+  "unique_content_count": 0,
+  "duplicate_cluster_count": 0,
+  "average_quality_score": 0.0,
+  "tier_counts": {},
+  "connector_counts": {},
+  "duplicate_clusters": [],
+  "conflict_flags": [],
+  "facet_coverage": {
+    "schema_version": "facet_coverage.v1",
+    "required_facets": 3,
+    "required_facets_covered": 0,
+    "missing_required_facets": [
+      "public_connector",
+      "web",
+      "social_audit"
+    ],
+    "relevance_threshold": 0.15,
+    "facets": [
+      {
+        "facet_id": "public_connector",
+        "required": true,
+        "query_ids": [
+          "q-0001"
+        ],
+        "relevant_yield_count": 0,
+        "evidence_ids": [],
+        "status": "missing"
+      },
+      {
+        "facet_id": "web",
+        "required": true,
+        "query_ids": [
+          "q-0002"
+        ],
+        "relevant_yield_count": 0,
+        "evidence_ids": [],
+        "status": "missing"
+      },
+      {
+        "facet_id": "social_audit",
+        "required": true,
+        "query_ids": [
+          "q-0003"
+        ],
+        "relevant_yield_count": 0,
+        "evidence_ids": [],
+        "status": "missing"
+      }
+    ]
+  },
+  "relevance_preview_evidence_ids": [],
+  "warnings": []
+}
