@@ -379,6 +379,10 @@ def normalize_text(text: str) -> str:
 def build_duplicate_clusters(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows_by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
+        if row.get("source_class") == "discovery_only" or (
+            row.get("claim_fitness") or {}
+        ).get("disposition") == "discovery_only":
+            continue
         rows_by_key[str(row.get("dedupe_key") or "")].append(row)
 
     clusters: list[dict[str, Any]] = []

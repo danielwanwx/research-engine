@@ -120,7 +120,11 @@ def execute_one_request(
     cache_key = build_cache_key(request, connector_id=connector_id)
     warnings: list[str] = []
     if options.cache_dir:
-        cached = read_cached_result(options.cache_dir, cache_key)
+        cached = read_cached_result(
+            options.cache_dir,
+            cache_key,
+            max_age_seconds=_positive_float(request.source.get("cache_ttl_seconds")),
+        )
         if cached:
             result = CollectionResult(
                 source_id=str(cached.get("source_id") or request.source_id),
@@ -341,7 +345,7 @@ def build_record(
     host_wait_seconds: float = 0.0,
     clock_fn: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
-    return {
+    record = {
         "source_id": request.source_id,
         "connector": connector_id,
         "status": status,
@@ -359,6 +363,31 @@ def build_record(
         "host_wait_seconds": round(host_wait_seconds, 3),
         "elapsed_ms": int((clock_fn() - started) * 1000),
     }
+    safe_metadata = _safe_provider_metadata(provider_metadata or {})
+    if safe_metadata:
+        record["provider_metadata"] = safe_metadata
+    return record
+
+
+def _safe_provider_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    allowed = {
+        "status",
+        "stop_reason",
+        "model",
+        "paid_calls_allowed",
+        "paid_calls_attempted",
+        "paid_calls_completed",
+        "external_calls_attempted",
+    }
+    safe = {key: metadata[key] for key in allowed if key in metadata}
+    usage = metadata.get("usage")
+    if isinstance(usage, dict):
+        safe["usage"] = {
+            str(key): value
+            for key, value in usage.items()
+            if isinstance(value, (int, float, str, bool)) and "key" not in str(key).lower()
+        }
+    return safe
 
 
 def retry_delay_seconds(
@@ -489,15 +518,34 @@ def cache_path(cache_dir: Path, cache_key: str) -> Path:
     return cache_dir / f"{cache_key}.json"
 
 
-def read_cached_result(cache_dir: Path, cache_key: str) -> dict[str, Any] | None:
+def read_cached_result(
+    cache_dir: Path,
+    cache_key: str,
+    *,
+    max_age_seconds: float | None = None,
+) -> dict[str, Any] | None:
     path = cache_path(cache_dir, cache_key)
     if not path.exists():
         return None
+    if max_age_seconds is not None:
+        try:
+            if time.time() - path.stat().st_mtime > max_age_seconds:
+                return None
+        except OSError:
+            return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _positive_float(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def write_cached_result(cache_dir: Path, cache_key: str, result: CollectionResult) -> None:

@@ -1,6 +1,7 @@
 """Built-in Research Engine connectors."""
 
 from .agent_reach import AgentReachBridgeConnector
+from .anysearch import AnySearchConnector
 from .base import Connector
 from .external import ExternalJsonlConnector
 from .finance import FinanceQuoteConnector
@@ -14,6 +15,7 @@ from .xai_discovery import XaiDiscoveryConnector
 
 __all__ = [
     "AgentReachBridgeConnector",
+    "AnySearchConnector",
     "Connector",
     "ExternalJsonlConnector",
     "FinanceQuoteConnector",

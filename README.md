@@ -144,6 +144,7 @@ runs/<timestamp-or-topic>/
 ├── run_manifest.json
 ├── query_plan.json
 ├── collection_execution.json
+├── cost_record.json
 ├── evidence.jsonl
 ├── chunks.jsonl
 ├── evidence_quality.json
@@ -182,6 +183,8 @@ Important files:
 - `repair_record.json` explains the optional single pass-2 repair and its stop reason.
 - `collection_execution.json` records connector status, retries, warnings,
   cache hits, and row counts.
+- `cost_record.json` records the paid-call budget, attempts, available usage,
+  and stop reason without persisting credentials.
 - `loop_contract.json` defines the research loop: goal, source scope, checks,
   feedback rules, records, stop conditions, and human gates.
 - `loop_record.json` records what passed, warned, failed, or stopped the run.

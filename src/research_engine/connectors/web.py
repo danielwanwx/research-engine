@@ -129,6 +129,74 @@ class RobotsPolicy:
 DEFAULT_ROBOTS_POLICY = RobotsPolicy()
 
 
+MAX_RESPONSE_BYTES = 2_000_000
+MAX_TEXT_CHARS = 100_000
+EVIDENCE_TEXT_CHARS = 4_000
+BLOCKED_HOST_SUFFIXES = (".localhost", ".local", ".internal")
+
+
+def page_body_status(text: str) -> str:
+    """Classify fetched bodies that cannot be treated as final evidence."""
+    normalized = " ".join(str(text or "").lower().replace("…", " ").split())
+    if not normalized:
+        return "empty"
+
+    if (
+        "you've been blocked by network security" in normalized
+        or "you’ve been blocked by network security" in normalized
+        or (
+            "403 error" in normalized
+            and ("request blocked" in normalized or "cloudfront" in normalized)
+        )
+        or (
+            "the request could not be satisfied" in normalized
+            and "cloudfront" in normalized
+        )
+    ):
+        return "access_blocked"
+
+    if len(normalized) <= 2_000 and any(
+        marker in normalized
+        for marker in (
+            "verify you are human",
+            "access denied",
+            "cf-browser-verification",
+            "captcha challenge",
+        )
+    ):
+        return "access_blocked"
+
+    if any(
+        marker in normalized
+        for marker in (
+            "page not found",
+            "404 not found",
+            "job not found",
+            "job is no longer available",
+            "job posting is no longer available",
+            "job posting has expired",
+            "position has been filled",
+            "position has been closed",
+            "no longer accepting applications",
+        )
+    ):
+        return "not_found_or_closed"
+
+    if len(normalized) <= 500 and (
+        (normalized.startswith("loading") and "powered by" in normalized)
+        or "enable javascript to view this page" in normalized
+        or "please enable javascript to continue" in normalized
+    ):
+        return "javascript_shell"
+    return "usable"
+
+
+class PublicRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_public_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class _TextExtractor(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -174,6 +242,7 @@ class WebPageConnector:
             url = str(page.get("url") or "")
             if not url:
                 continue
+            body_status = "empty"
             try:
                 fetched = (
                     self.fetcher(url)

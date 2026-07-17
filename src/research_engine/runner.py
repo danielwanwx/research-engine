@@ -12,6 +12,7 @@ from research_engine.artifacts import render_report, slugify, write_json, write_
 from research_engine.conflicts import build_independence_key
 from research_engine.connectors import (
     AgentReachBridgeConnector,
+    AnySearchConnector,
     ExternalJsonlConnector,
     FinanceQuoteConnector,
     GitHubPublicSearchConnector,
@@ -60,6 +61,7 @@ ConnectorProvider = Any | Callable[[], Any]
 
 DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
     AgentReachBridgeConnector.connector_id: AgentReachBridgeConnector,
+    AnySearchConnector.connector_id: AnySearchConnector,
     ExternalJsonlConnector.connector_id: ExternalJsonlConnector,
     FinanceQuoteConnector.connector_id: FinanceQuoteConnector,
     GitHubPublicSearchConnector.connector_id: GitHubPublicSearchConnector,
@@ -72,6 +74,7 @@ DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
 }
 
 DEPTH_MAX_RESULTS = {"quick": 3, "deep": 8, "audit": 12}
+TARGET_DISCOVERY_CACHE_TTL_SECONDS = 86_400
 
 
 class ResearchEngine:
@@ -573,10 +576,16 @@ class ResearchEngine:
             repair_record=repair_record,
             facet_coverage=dict(quality_report.get("facet_coverage") or {}),
         )
+        cost_record = build_cost_record(
+            execution_report,
+            paid_discovery=paid_discovery,
+            paid_call_budget=paid_call_budget,
+        )
         manifest = {
             "run_id": run_id,
             "topic": topic,
             "created_at": utc_now(),
+            "implementation_path": str(Path(__file__).resolve().parents[2]),
             "status": status,
             "artifact_contract": "target_intelligence.v1" if resolved_target else "research_engine.v2",
             "profile": str(query_plan.get("profile") or "generic"),
@@ -590,6 +599,7 @@ class ResearchEngine:
                 "request_count": execution_report.get("request_count", 0),
                 "status_counts": execution_report.get("status_counts") or {},
                 "cache_enabled": bool(execution_report.get("cache_enabled")),
+                "paid_calls_attempted": cost_record["paid_calls_attempted"],
             },
             "quality_summary": {
                 "average_quality_score": quality_report.get("average_quality_score"),
