@@ -454,6 +454,8 @@ def test_target_runner_refetches_xai_citation_before_claim_acceptance(tmp_path):
         "Stripe Staff Backend Engineer US",
         pack_id="interview_prep",
         target=TARGET,
+        paid_discovery=True,
+        paid_call_budget=1,
         run_date="2026-07-14",
         slug="stripe-xai-refetch",
     )
@@ -492,6 +494,8 @@ def test_target_runs_are_cache_stable_and_do_not_inflate_duplicates(tmp_path):
         "Stripe Staff Backend Engineer US",
         pack_id="interview_prep",
         target=TARGET,
+        paid_discovery=True,
+        paid_call_budget=1,
         run_date="2026-07-14",
         slug="target-cache-first",
     )
@@ -499,6 +503,8 @@ def test_target_runs_are_cache_stable_and_do_not_inflate_duplicates(tmp_path):
         "Stripe Staff Backend Engineer US",
         pack_id="interview_prep",
         target=TARGET,
+        paid_discovery=True,
+        paid_call_budget=1,
         run_date="2026-07-14",
         slug="target-cache-second",
     )

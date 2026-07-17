@@ -148,6 +148,7 @@ def execute_one_request(
                 row_count=len(result.rows),
                 warnings=result.warnings,
                 started=started,
+                provider_metadata=result.metadata,
                 clock_fn=options.monotonic_fn,
             )
 
@@ -171,7 +172,8 @@ def execute_one_request(
     retry_delays: list[float] = []
     host_wait_seconds = 0.0
     deadline_exhausted = False
-    max_attempts = max(1, options.retries + 1)
+    paid_connector = bool(request.source.get("paid_call")) or connector_id == "xai_discovery"
+    max_attempts = 1 if paid_connector else max(1, options.retries + 1)
     for attempt in range(1, max_attempts + 1):
         attempts = attempt
         connector = provider() if callable(provider) else provider
@@ -285,6 +287,7 @@ def execute_one_request(
             retry_delays=retry_delays,
             deadline_exhausted=deadline_exhausted,
             host_wait_seconds=host_wait_seconds,
+            provider_metadata=result.metadata,
             clock_fn=options.monotonic_fn,
         )
 
@@ -343,6 +346,7 @@ def build_record(
     retry_delays: list[float] | None = None,
     deadline_exhausted: bool = False,
     host_wait_seconds: float = 0.0,
+    provider_metadata: dict[str, Any] | None = None,
     clock_fn: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
     record = {

@@ -8,6 +8,7 @@ from typing import Any, Callable
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from research_engine.call_policy import paid_discovery_decision
 from research_engine.models import CollectionRequest, CollectionResult, utc_now
 from research_engine.targets import ResearchTarget
 
@@ -25,6 +26,24 @@ class XaiDiscoveryConnector:
 
     def collect(self, request: CollectionRequest) -> CollectionResult:
         target = ResearchTarget.from_mapping(dict(request.source.get("target") or {}))
+        decision = paid_discovery_decision(
+            request.source,
+            transport_injected=self.transport is not None,
+        )
+        if not decision["allowed"]:
+            return CollectionResult(
+                source_id=request.source_id,
+                connector=self.connector_id,
+                rows=[],
+                warnings=[f"xAI discovery blocked: {decision['stop_reason']}"],
+                metadata={
+                    "status": "blocked",
+                    "authority": "discovery_only",
+                    **decision,
+                    "paid_calls_attempted": 0,
+                    "paid_calls_completed": 0,
+                },
+            )
         api_key = str(
             os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY") or ""
         ).strip()
@@ -56,6 +75,9 @@ class XaiDiscoveryConnector:
                     "status": "failed",
                     "authority": "discovery_only",
                     "error_type": error_type,
+                    **decision,
+                    "paid_calls_attempted": int(self.transport is None),
+                    "paid_calls_completed": 0,
                 },
             )
         rows = [
@@ -72,6 +94,10 @@ class XaiDiscoveryConnector:
                 "authority": "discovery_only",
                 "citation_count": len(rows),
                 "model": str(payload.get("model") or ""),
+                **decision,
+                "paid_calls_attempted": int(self.transport is None),
+                "paid_calls_completed": int(self.transport is None),
+                "usage": dict(response.get("usage") or {"status": "unknown"}),
             },
         )
 
@@ -89,7 +115,8 @@ def build_payload(target: ResearchTarget, *, run_date: str) -> dict[str, Any]:
     return {
         "model": str(os.environ.get("XAI_MODEL") or os.environ.get("GROK_MODEL") or DEFAULT_MODEL),
         "input": [{"role": "user", "content": prompt}],
-        "tools": [{"type": "web_search"}, {"type": "x_search"}],
+        "tools": [{"type": "web_search"}],
+        "max_output_tokens": 800,
     }
 
 
