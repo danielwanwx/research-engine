@@ -81,6 +81,7 @@ def _build_pdf(markdown: str, *, output: Path, title: str, as_of: str) -> tuple[
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
+    from reportlab.pdfgen.canvas import Canvas
     from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
 
     body_font, bold_font, font_mode = _register_fonts()
@@ -97,11 +98,11 @@ def _build_pdf(markdown: str, *, output: Path, title: str, as_of: str) -> tuple[
         canvas.setLineWidth(0.5)
         if page > 1:
             canvas.line(left, page_height - 10.5 * mm, page_width - right, page_height - 10.5 * mm)
-            canvas.setFont(body_font, 6.8)
+            canvas.setFont(body_font, 7)
             canvas.setFillColor(colors.HexColor(MUTED))
             canvas.drawString(left, page_height - 8 * mm, _short(title, 72))
         canvas.line(left, 10.5 * mm, page_width - right, 10.5 * mm)
-        canvas.setFont(body_font, 6.8)
+        canvas.setFont(body_font, 7)
         canvas.setFillColor(colors.HexColor(MUTED))
         canvas.drawString(left, 7.3 * mm, f"Research Engine | As of {as_of or 'unknown'}")
         canvas.drawRightString(page_width - right, 7.3 * mm, str(page))
@@ -130,7 +131,18 @@ def _build_pdf(markdown: str, *, output: Path, title: str, as_of: str) -> tuple[
         subject=f"Research report as of {as_of or 'unknown'}",
     )
     doc.addPageTemplates([PageTemplate(id="report", frames=[frame], onPage=draw_page)])
-    doc.build(story)
+    doc.build(
+        story,
+        canvasmaker=lambda *args, **kwargs: Canvas(
+            *args,
+            **{
+                **kwargs,
+                "initialFontName": body_font,
+                "initialFontSize": 7,
+                "initialLeading": 8.4,
+            },
+        ),
+    )
     return int(doc.page), font_mode
 
 
@@ -139,47 +151,63 @@ def _register_fonts() -> tuple[str, str, str]:
     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.pdfbase.ttfonts import TTFont
 
-    regular = [
-        ("/System/Library/Fonts/STHeiti Light.ttc", 0),
-        ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
-        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
-        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0),
-    ]
-    bold = [
-        ("/System/Library/Fonts/STHeiti Medium.ttc", 0),
-        ("/System/Library/Fonts/Hiragino Sans GB.ttc", 1),
-        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 0),
-        ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 0),
+    pairs = [
+        (
+            "noto_sans_cjk",
+            ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
+            ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 0),
+        ),
+        (
+            "noto_sans_cjk_sc",
+            ("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf", 0),
+            ("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Bold.otf", 0),
+        ),
+        (
+            "arial_unicode",
+            ("/Library/Fonts/Arial Unicode.ttf", 0),
+            ("/Library/Fonts/Arial Unicode.ttf", 0),
+        ),
+        (
+            "arial_unicode",
+            ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
+            ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
+        ),
+        (
+            "heiti_sc",
+            ("/System/Library/Fonts/STHeiti Light.ttc", 1),
+            ("/System/Library/Fonts/STHeiti Medium.ttc", 1),
+        ),
     ]
 
-    regular_font = _register_first_ttf("ResearchBody", regular, TTFont, pdfmetrics)
-    bold_font = _register_first_ttf("ResearchBold", bold, TTFont, pdfmetrics)
-    if regular_font and bold_font:
+    for mode, regular, bold in pairs:
+        regular_path, regular_index = regular
+        bold_path, bold_index = bold
+        if not Path(regular_path).exists() or not Path(bold_path).exists():
+            continue
+        try:
+            regular_font = TTFont(
+                "ResearchBody",
+                regular_path,
+                subfontIndex=regular_index,
+            )
+            bold_font = TTFont("ResearchBold", bold_path, subfontIndex=bold_index)
+        except Exception:
+            continue
+        pdfmetrics.registerFont(regular_font)
+        pdfmetrics.registerFont(bold_font)
         pdfmetrics.registerFontFamily(
-            regular_font,
-            normal=regular_font,
-            bold=bold_font,
-            italic=regular_font,
-            boldItalic=bold_font,
+            "ResearchBody",
+            normal="ResearchBody",
+            bold="ResearchBold",
+            italic="ResearchBody",
+            boldItalic="ResearchBold",
         )
-        return regular_font, bold_font, "embedded_ttf"
+        return "ResearchBody", "ResearchBold", f"embedded_{mode}"
 
     fallback = "STSong-Light"
     if fallback not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(UnicodeCIDFont(fallback))
     return fallback, fallback, "cid_fallback"
-
-
-def _register_first_ttf(name: str, candidates, ttfont, pdfmetrics) -> str:
-    for path, index in candidates:
-        if not Path(path).exists():
-            continue
-        try:
-            pdfmetrics.registerFont(ttfont(name, path, subfontIndex=index))
-            return name
-        except Exception:
-            continue
-    return ""
 
 
 def _styles(body_font: str, bold_font: str) -> dict[str, Any]:
@@ -193,7 +221,7 @@ def _styles(body_font: str, bold_font: str) -> dict[str, Any]:
             parent=base["Title"],
             fontName=bold_font,
             fontSize=22,
-            leading=29,
+            leading=28,
             textColor=colors.HexColor(INK),
             spaceAfter=14,
         ),
@@ -201,8 +229,8 @@ def _styles(body_font: str, bold_font: str) -> dict[str, Any]:
             "ResearchH2",
             parent=base["Heading2"],
             fontName=bold_font,
-            fontSize=14,
-            leading=19,
+            fontSize=15,
+            leading=20,
             textColor=colors.HexColor(INK),
             spaceBefore=14,
             spaceAfter=7,
@@ -212,8 +240,8 @@ def _styles(body_font: str, bold_font: str) -> dict[str, Any]:
             "ResearchH3",
             parent=base["Heading3"],
             fontName=bold_font,
-            fontSize=11,
-            leading=15,
+            fontSize=11.5,
+            leading=16,
             textColor=colors.HexColor(ACCENT_DARK),
             spaceBefore=10,
             spaceAfter=5,
@@ -223,8 +251,8 @@ def _styles(body_font: str, bold_font: str) -> dict[str, Any]:
             "ResearchBody",
             parent=base["BodyText"],
             fontName=body_font,
-            fontSize=9,
-            leading=14,
+            fontSize=9.5,
+            leading=14.5,
             textColor=colors.HexColor(INK),
             spaceAfter=6,
             wordWrap="CJK",
@@ -233,11 +261,13 @@ def _styles(body_font: str, bold_font: str) -> dict[str, Any]:
             "ResearchBullet",
             parent=base["BodyText"],
             fontName=body_font,
-            fontSize=8.8,
-            leading=13.5,
+            fontSize=9.5,
+            leading=14.5,
             leftIndent=15,
             firstLineIndent=-10,
             bulletIndent=2,
+            bulletFontName=body_font,
+            bulletFontSize=9.5,
             textColor=colors.HexColor(INK),
             spaceAfter=4,
             wordWrap="CJK",
@@ -246,8 +276,8 @@ def _styles(body_font: str, bold_font: str) -> dict[str, Any]:
             "ResearchNumber",
             parent=base["BodyText"],
             fontName=body_font,
-            fontSize=8.8,
-            leading=13.5,
+            fontSize=9.5,
+            leading=14.5,
             leftIndent=18,
             firstLineIndent=-18,
             textColor=colors.HexColor(INK),
@@ -258,8 +288,8 @@ def _styles(body_font: str, bold_font: str) -> dict[str, Any]:
             "ResearchTable",
             parent=base["BodyText"],
             fontName=body_font,
-            fontSize=7.6,
-            leading=11,
+            fontSize=8,
+            leading=11.5,
             textColor=colors.HexColor(INK),
             wordWrap="CJK",
         ),
@@ -267,8 +297,8 @@ def _styles(body_font: str, bold_font: str) -> dict[str, Any]:
             "ResearchTableHead",
             parent=base["BodyText"],
             fontName=bold_font,
-            fontSize=7.7,
-            leading=11,
+            fontSize=8,
+            leading=11.5,
             textColor=colors.HexColor(INK),
             wordWrap="CJK",
         ),
@@ -362,6 +392,8 @@ def _table(lines: list[str], *, styles: dict[str, Any], width: float):
     table = LongTable(data, colWidths=[width / columns] * columns, repeatRows=1, hAlign="LEFT")
     commands = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(TABLE_HEAD)),
+        ("FONTNAME", (0, 0), (-1, -1), styles["table"].fontName),
+        ("FONTSIZE", (0, 0), (-1, -1), styles["table"].fontSize),
         ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor(LINE)),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 5),

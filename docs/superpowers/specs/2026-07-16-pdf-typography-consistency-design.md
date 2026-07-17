@@ -22,10 +22,13 @@ Do not add a theme system, font configuration surface, or new dependency.
 Use one pan-CJK sans-serif family for Chinese, Latin, numbers, links, inline
 bold text, bullets, headers, and footers.
 
-Font preference order:
+ReportLab cannot embed the PostScript outlines in macOS Hiragino Sans GB or
+PingFang. A rendered comparison also showed that Lantinghei omits the list
+marker glyph. The compatible font preference order is therefore:
 
-1. macOS Hiragino Sans GB W3 (TTC index 0) and W6 (TTC index 2).
-2. Linux Noto Sans CJK Regular and Bold.
+1. Linux Noto Sans CJK Regular and Bold.
+2. macOS Arial Unicode for both normal and emphasized text; hierarchy comes
+   from size, spacing, and color instead of mixing families.
 3. macOS Heiti SC Light and Medium (TTC index 1).
 4. ReportLab's CJK CID fallback when no embeddable family is available.
 
@@ -61,7 +64,7 @@ remains non-fatal to the research run.
 
 ## Verification
 
-- Unit-test the Hiragino TTC indices and font preference order.
+- Test the complete-pair registration and font preference order.
 - Assert body, bullet, and numbered styles use one font and one size.
 - Inspect rendered page resources to ensure Helvetica is absent.
 - Run the full test suite and Ruff.

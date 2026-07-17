@@ -2,7 +2,7 @@ import json
 
 from pypdf import PdfReader
 
-from research_engine.pdf_report import render_pdf_report
+from research_engine.pdf_report import _styles, render_pdf_report
 
 
 def test_pdf_report_renders_chinese_tables_links_and_metadata(tmp_path):
@@ -49,3 +49,20 @@ def test_pdf_report_renders_chinese_tables_links_and_metadata(tmp_path):
         for annotation in page.get("/Annots", [])
     ]
     assert "https://fred.stlouisfed.org/" in links
+    font_names = {
+        str(font.get_object().get("/BaseFont") or "")
+        for page in reader.pages
+        for font in page["/Resources"]["/Font"].get_object().values()
+    }
+    assert not any("Helvetica" in name for name in font_names)
+
+
+def test_pdf_typography_uses_one_body_scale():
+    styles = _styles("UnifiedBody", "UnifiedBold")
+
+    for name in ("body", "bullet", "number"):
+        assert styles[name].fontName == "UnifiedBody"
+        assert styles[name].fontSize == 9.5
+        assert styles[name].leading == 14.5
+    assert styles["bullet"].bulletFontName == "UnifiedBody"
+    assert styles["bullet"].bulletFontSize == 9.5
