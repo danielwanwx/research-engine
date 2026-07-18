@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import importlib.util
+import os
 from pathlib import Path
 import platform
 import shutil
@@ -11,6 +12,10 @@ import subprocess
 import sys
 from typing import Any, Callable
 
+from research_engine.connectors.authenticated_browser import (
+    LOGIN_BROWSER_ENV,
+    resolve_login_browser,
+)
 from research_engine.models import utc_now
 from research_engine.state import CONNECTOR_CAPABILITIES_FILE, resolve_state_path, write_state_json
 
@@ -84,7 +89,7 @@ COMMAND_CHECKS: dict[str, dict[str, Any]] = {
     },
 }
 
-TARGETS = {"all", "agentreach", "opencli", "chrome"}
+TARGETS = {"all", "agentreach", "opencli", "browser", "chrome"}
 
 
 def run_doctor(
@@ -101,8 +106,11 @@ def run_doctor(
         check_import("research_engine", label="Research Engine package", required=True),
     ]
     checks.extend(command_checks_for_target(resolved_target, runner=runner, which=which))
-    if resolved_target in {"all", "chrome"}:
+    if resolved_target in {"all", "browser", "chrome"}:
         checks.append(check_import("playwright", label="Playwright browser renderer", required=False))
+        checks.append(check_playwright_chromium())
+        checks.append(check_login_browser())
+        checks.append(check_gui_readiness())
 
     check_dicts = [check.as_dict() for check in checks]
     required_failures = [
@@ -188,6 +196,78 @@ def check_import(module: str, *, label: str, required: bool) -> CapabilityCheck:
         path=origin,
         warning="" if available else f"Python module is not importable: {module}",
         metadata={"required": required, "group": "python"},
+    )
+
+
+def check_playwright_chromium() -> CapabilityCheck:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return CapabilityCheck(
+            id="browser:chromium",
+            label="Playwright Chromium",
+            available=False,
+            warning="Playwright is not installed; install research-engine[browser].",
+            metadata={"required": False, "group": "browser"},
+        )
+    try:
+        playwright = sync_playwright().start()
+        try:
+            executable = Path(playwright.chromium.executable_path)
+        finally:
+            playwright.stop()
+    except Exception as exc:
+        return CapabilityCheck(
+            id="browser:chromium",
+            label="Playwright Chromium",
+            available=False,
+            warning=f"Unable to inspect Chromium: {type(exc).__name__}",
+            metadata={"required": False, "group": "browser"},
+        )
+    available = executable.is_file()
+    return CapabilityCheck(
+        id="browser:chromium",
+        label="Playwright Chromium",
+        available=available,
+        path=str(executable) if available else "",
+        warning="" if available else "Run: playwright install chromium",
+        metadata={"required": False, "group": "browser"},
+    )
+
+
+def check_login_browser(
+    resolver: Callable[[], str] = resolve_login_browser,
+) -> CapabilityCheck:
+    path = resolver()
+    available = bool(path)
+    return CapabilityCheck(
+        id="browser:login_chrome",
+        label="Normal Chrome for user-controlled login",
+        available=available,
+        path=path,
+        warning=(
+            ""
+            if available
+            else f"Install Google Chrome or set {LOGIN_BROWSER_ENV} to its executable."
+        ),
+        metadata={"required": False, "group": "browser"},
+    )
+
+
+def check_gui_readiness() -> CapabilityCheck:
+    gui_available = platform.system() in {"Darwin", "Windows"} or bool(
+        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    )
+    return CapabilityCheck(
+        id="browser:gui",
+        label="Visible browser session",
+        available=gui_available,
+        warning="" if gui_available else "No desktop display is available for user-controlled login.",
+        metadata={
+            "required": False,
+            "group": "browser",
+            "interactive_stdin": sys.stdin.isatty(),
+        },
     )
 
 

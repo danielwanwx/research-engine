@@ -91,6 +91,14 @@ def build_loop_contract(
                 "record": "collection_execution.json",
             },
             {
+                "id": "recover_auth",
+                "description": (
+                    "When a supported barrier is recoverable, stop for exact-origin consent and "
+                    "user-controlled login before bounded read-only capture."
+                ),
+                "record": "auth_challenges.jsonl",
+            },
+            {
                 "id": "normalize",
                 "description": "Normalize connector outputs into evidence rows with stable evidence IDs.",
                 "record": "evidence.jsonl",
@@ -336,6 +344,7 @@ def build_loop_record(
         check_connector_health(warnings=warnings),
         check_facet_coverage(facet_coverage or {}, dry_run=dry_run),
         check_repair_bounds(repair_record or {}, dry_run=dry_run),
+        check_human_gates(query_plan=query_plan, dry_run=dry_run),
     ]
     feedback_actions = build_feedback_actions(
         status=status,
@@ -360,6 +369,7 @@ def build_loop_record(
             "quality": "evidence_quality.json",
             "facet_coverage": "facet_coverage.json",
             "repair": "repair_record.json",
+            "auth_challenges": "auth_challenges.jsonl",
             "claims": "claim_review.json",
             "decision": "decision_brief.json",
         },
@@ -372,6 +382,28 @@ def build_loop_record(
             "conflict_flag_count": len(quality_report.get("conflict_flags") or []),
         },
     }
+
+
+def check_human_gates(*, query_plan: dict[str, Any], dry_run: bool) -> dict[str, Any]:
+    summary = dict(query_plan.get("auth_challenge_summary") or {})
+    pending = int(summary.get("pending_human_actions") or 0)
+    if dry_run:
+        return skipped("human_gates", "Dry run did not enter authenticated browser recovery.")
+    if pending:
+        return fail(
+            "human_gates",
+            f"{pending} authenticated browser challenge(s) still require user action.",
+            "Resume in an interactive session, approve read-only access, and complete sign-in.",
+        )
+    coverage_gaps = int(summary.get("advisory_coverage_gaps") or 0)
+    if coverage_gaps:
+        return warn(
+            "human_gates",
+            f"{coverage_gaps} advisory authenticated source(s) could not be collected.",
+            "Treat the missing authenticated source as a coverage gap and keep confidence bounded.",
+        )
+    completed = int(summary.get("completed") or 0)
+    return passed("human_gates", f"No pending human gates; {completed} challenge(s) completed.")
 
 
 def check_context_hygiene(*, rows: list[dict[str, Any]], dry_run: bool) -> dict[str, Any]:
@@ -750,6 +782,11 @@ def summarize_loop_status(*, status: str, check_results: list[dict[str, Any]]) -
 def stop_reason(*, status: str, dry_run: bool, check_results: list[dict[str, Any]]) -> str:
     if dry_run or status == "planned":
         return "planned_before_collection"
+    if any(
+        result.get("check_id") == "human_gates" and result.get("status") == "fail"
+        for result in check_results
+    ):
+        return "human_action_required"
     if status == "failed_no_sources":
         return "no_executable_sources"
     if status == "failed_no_rows":

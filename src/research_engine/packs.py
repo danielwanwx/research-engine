@@ -30,6 +30,7 @@ PROFILE_REQUIRED_FACETS: dict[str, frozenset[str]] = {
         {"active_openings", "company_coverage", "role_terms", "geography", "skills", "compensation"}
     ),
 }
+SUPPORTED_DEPTHS = frozenset({"quick", "deep", "audit"})
 
 
 def load_research_packs(pack_dir: Path | None = None) -> list[dict[str, Any]]:
@@ -139,6 +140,8 @@ def normalize_pack(payload: dict[str, Any], *, path: Path | None) -> dict[str, A
     pack.setdefault("matrix_nodes", [])
     pack.setdefault("matrix_entities", {})
     pack.setdefault("decision_rules", {})
+    pack.setdefault("platforms", [])
+    pack.setdefault("platforms_by_depth", {})
     validate_pack(pack, path=path)
     if path:
         pack["_pack_path"] = str(path)
@@ -183,6 +186,29 @@ def validate_pack(pack: dict[str, Any], *, path: Path | None = None) -> None:
     missing = sorted((required or set()) - set(facet_ids))
     if missing:
         raise ValueError(prefix + f"{pack_id} pack missing required facets: {', '.join(missing)}")
+
+    platforms = pack.get("platforms")
+    if not isinstance(platforms, list) or not all(
+        isinstance(value, str) and value.strip() for value in platforms
+    ):
+        raise ValueError(prefix + "pack platforms must be a list of non-empty strings")
+    platforms_by_depth = pack.get("platforms_by_depth")
+    if not isinstance(platforms_by_depth, dict):
+        raise ValueError(prefix + "pack platforms_by_depth must be an object")
+    unsupported_depths = sorted(set(platforms_by_depth) - SUPPORTED_DEPTHS)
+    if unsupported_depths:
+        raise ValueError(
+            prefix
+            + "pack platforms_by_depth has unsupported depth(s): "
+            + ", ".join(unsupported_depths)
+        )
+    for depth, values in platforms_by_depth.items():
+        if not isinstance(values, list) or not all(
+            isinstance(value, str) and value.strip() for value in values
+        ):
+            raise ValueError(
+                prefix + f"pack platforms_by_depth.{depth} must be a list of non-empty strings"
+            )
 
 
 def _facet_templates(facet: dict[str, Any]) -> list[str]:

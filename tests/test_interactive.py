@@ -52,6 +52,7 @@ def test_research_wizard_no_args_asks_topic_and_runs_default_deep_public():
     assert calls["run_kwargs"]["depth"] == "deep"
     assert calls["run_kwargs"]["platform_scope"] == "broad"
     assert calls["run_kwargs"]["agent_reach"] is False
+    assert calls["run_kwargs"]["browser_auth"] == "auto"
     assert calls["run_kwargs"]["external_evidence_paths"] == []
     assert any("loop status: complete_with_review_required" in line for line in output)
 
@@ -96,6 +97,7 @@ def test_research_wizard_topic_uses_all_read_only_sources_and_jsonl_paths():
     assert calls["run_kwargs"]["depth"] == "audit"
     assert calls["run_kwargs"]["platform_scope"] == "all"
     assert calls["run_kwargs"]["agent_reach"] is True
+    assert calls["run_kwargs"]["browser_auth"] == "auto"
     assert [path.name for path in paths] == ["a.jsonl", "b.jsonl"]
     assert any("Do not paste cookies" in line for line in output)
     assert any("warnings" in line for line in output)

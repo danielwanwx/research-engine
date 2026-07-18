@@ -1,13 +1,19 @@
 import json
+from pathlib import Path
 
 import pytest
 
+from research_engine.browser_auth import ConsentStore
 from research_engine.cli import main
+from research_engine.connectors.authenticated_browser import AuthenticatedBrowserConnector
 from research_engine.models import CollectionResult
-from research_engine.platforms import build_platform_research_plan
+from research_engine.packs import select_research_pack
+from research_engine.platforms import build_platform_research_plan, pack_platforms_for_depth
 from research_engine.runner import (
     ResearchEngine,
+    apply_auth_coverage_confidence_ceiling,
     build_analysis_rows,
+    build_authenticated_browser_requests,
     build_evidence_chunks,
     build_source_requests,
     normalize_rows,
@@ -141,6 +147,42 @@ class FakeGitHubPublicConnector:
                     "access_mode": "public_github_api",
                 }
             ],
+        )
+
+
+class FakeAuthenticatedBrowserConnector:
+    connector_id = "authenticated_browser"
+
+    def collect(self, request):
+        return CollectionResult(
+            source_id=request.source_id,
+            connector=self.connector_id,
+            rows=[
+                {
+                    "title": "LinkedIn agent discussion",
+                    "url": "https://www.linkedin.com/posts/example",
+                    "text": "Agent engineering discussion with concrete deployment evidence.",
+                    "content_valid": True,
+                    "access_mode": "user_consented_browser",
+                }
+            ],
+            metadata={
+                "status": "ready",
+                "auth_challenges": [
+                    {
+                        "challenge_id": "fixture-linkedin",
+                        "recipe_id": "linkedin",
+                        "recipe_version": 1,
+                        "origin": "https://www.linkedin.com",
+                        "requested_url": "https://www.linkedin.com/search/results/content/",
+                        "reason": "explicit_platform_request",
+                        "status": "completed",
+                        "human_action_required": False,
+                        "consent_required": True,
+                        "created_at": "2026-07-17T00:00:00+00:00",
+                    }
+                ],
+            },
         )
 
 
@@ -319,6 +361,128 @@ def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     assert json.loads((run_dir / "run_manifest.json").read_text())["pdf_report"][
         "status"
     ] == "generated"
+
+
+def test_runner_executes_explicit_browser_recovery_and_writes_challenge_artifact(tmp_path):
+    engine = ResearchEngine(
+        output_dir=tmp_path,
+        connectors={"authenticated_browser": FakeAuthenticatedBrowserConnector()},
+    )
+
+    result = engine.run(
+        "LinkedIn agent engineering evidence",
+        run_date="2026-07-17",
+        search_provider="none",
+    )
+
+    run_dir = tmp_path / result.run_id
+    challenges = [
+        json.loads(line)
+        for line in (run_dir / "auth_challenges.jsonl").read_text().splitlines()
+    ]
+    plan = json.loads((run_dir / "query_plan.json").read_text())
+    evidence = [json.loads(line) for line in (run_dir / "evidence.jsonl").read_text().splitlines()]
+    assert challenges[0]["status"] == "completed"
+    assert plan["browser_auth"] == "auto"
+    assert plan["auth_challenge_summary"] == {
+        "total": 1,
+        "completed": 1,
+        "pending_human_actions": 0,
+        "advisory_coverage_gaps": 0,
+    }
+    assert any(row["connector"] == "authenticated_browser" for row in evidence)
+
+
+def test_runner_browser_auth_never_preserves_public_only_mode(tmp_path):
+    engine = ResearchEngine(
+        output_dir=tmp_path,
+        connectors={"authenticated_browser": FakeAuthenticatedBrowserConnector()},
+    )
+
+    result = engine.run(
+        "LinkedIn agent engineering evidence",
+        run_date="2026-07-17",
+        search_provider="none",
+        browser_auth="never",
+    )
+
+    run_dir = tmp_path / result.run_id
+    assert (run_dir / "auth_challenges.jsonl").read_text() == ""
+    plan = json.loads((run_dir / "query_plan.json").read_text())
+    assert plan["browser_auth"] == "never"
+    assert plan["auth_challenge_summary"]["total"] == 0
+
+
+def test_runner_noninteractive_browser_auto_stops_at_auditable_human_gate(tmp_path):
+    connector = AuthenticatedBrowserConnector(
+        consent_store=ConsentStore(tmp_path / "auth"),
+        interactive=False,
+        auth_root=tmp_path / "auth",
+    )
+    engine = ResearchEngine(
+        output_dir=tmp_path / "runs",
+        connectors={"authenticated_browser": connector},
+    )
+
+    result = engine.run(
+        "LinkedIn agent engineering evidence",
+        run_date="2026-07-17",
+        search_provider="none",
+    )
+
+    challenge = json.loads(
+        (Path(result.run_dir) / "auth_challenges.jsonl").read_text().splitlines()[0]
+    )
+    assert result.loop_status == "blocked"
+    assert result.stop_reason == "human_action_required"
+    assert challenge["status"] == "human_action_required"
+    assert challenge["human_action_required"] is True
+
+
+def test_cli_auth_lists_revokes_and_clears_one_profile(tmp_path, capsys):
+    store = ConsentStore(tmp_path)
+    store.grant(recipe_id="linkedin", recipe_version=1, origin="https://www.linkedin.com")
+    profile = tmp_path / "profiles" / "linkedin"
+    profile.mkdir(parents=True)
+    (profile / "Preferences").write_text("fixture")
+
+    assert main(["auth", "--root", str(tmp_path), "list", "--format", "json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["grants"][0]["recipe_id"] == "linkedin"
+
+    assert main(["auth", "--root", str(tmp_path), "revoke", "linkedin"]) == 0
+    assert "Revoked 1" in capsys.readouterr().out
+    assert main(["auth", "--root", str(tmp_path), "clear-profile", "linkedin"]) == 0
+    assert "Profile cleared" in capsys.readouterr().out
+    assert not profile.exists()
+
+
+def test_recoverable_unknown_site_uses_origin_isolated_generic_recipe():
+    blocked = CollectionResult(
+        source_id="blocked",
+        connector="web_page",
+        rows=[
+            {
+                "url": "https://community.example/private/topic?token=not-an-artifact",
+                "content_invalid_reasons": ["login_wall"],
+                "content_valid": False,
+            }
+        ],
+    )
+
+    requests = build_authenticated_browser_requests(
+        [blocked],
+        platform_plan=[],
+        topic="community evidence",
+        run_date="2026-07-17",
+        depth="quick",
+        max_results=3,
+        browser_auth="auto",
+        pack_platforms=set(),
+    )
+
+    assert len(requests) == 1
+    assert requests[0].source["recipe_id"] == "generic"
 
 
 def test_late_document_chunks_participate_in_claim_synthesis():
@@ -718,6 +882,55 @@ def test_build_source_requests_can_add_public_platform_search_pages():
     assert search_source["source_kind"] == "platform_search_page"
     page_publishers = {page["publisher"] for page in search_source["pages"]}
     assert {"Reddit", "Hacker News"}.issubset(page_publishers)
+
+
+def test_job_market_deep_run_schedules_advisory_linkedin_but_quick_does_not():
+    topic = "US software engineer employment market"
+    pack = select_research_pack(topic)
+
+    def browser_requests(depth):
+        platform_plan = build_platform_research_plan(
+            topic,
+            scope="broad",
+            pack=pack,
+            depth=depth,
+        )
+        return build_authenticated_browser_requests(
+            [],
+            platform_plan=platform_plan,
+            topic=topic,
+            run_date="2026-07-17",
+            depth=depth,
+            max_results=3,
+            browser_auth="auto",
+            pack_platforms=pack_platforms_for_depth(pack, depth),
+        )
+
+    assert browser_requests("quick") == []
+    deep_requests = browser_requests("deep")
+    assert len(deep_requests) == 1
+    assert deep_requests[0].source["recipe_id"] == "linkedin"
+    assert deep_requests[0].source["auth_gate_policy"] == "advisory"
+    assert deep_requests[0].source["challenge_reason"] == "pack_platform_priority"
+
+
+def test_missing_advisory_linkedin_coverage_caps_claim_confidence():
+    review = {"overall": {"confidence": "high", "risk_flags": []}}
+
+    apply_auth_coverage_confidence_ceiling(
+        review,
+        [
+            {
+                "recipe_id": "linkedin",
+                "coverage_missing": True,
+                "blocking": False,
+            }
+        ],
+    )
+
+    assert review["overall"]["confidence"] == "medium"
+    assert review["overall"]["confidence_ceiling"] == "medium"
+    assert review["overall"]["risk_flags"] == ["linkedin_coverage_missing"]
 
 
 def test_runner_marks_empty_connector_results_as_failed_no_rows(tmp_path):

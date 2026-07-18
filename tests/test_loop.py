@@ -164,3 +164,44 @@ def test_loop_contract_exposes_domain_agent_contract():
     assert {check["id"] for check in contract["checks"]}.issuperset(
         {"context_hygiene", "stop_brakes", "critic_separation", "tool_focus"}
     )
+    assert "auth_challenges.jsonl" in {
+        step["record"] for step in contract["execute_steps"]
+    }
+
+
+def test_pending_authenticated_browser_gate_has_explicit_stop_reason():
+    kwargs = base_loop_kwargs(status="failed_no_rows", rows=[])
+    kwargs["query_plan"] = {
+        **kwargs["query_plan"],
+        "auth_challenge_summary": {
+            "total": 1,
+            "completed": 0,
+            "pending_human_actions": 1,
+        },
+    }
+
+    record = build_loop_record(**kwargs)
+
+    assert record["loop_status"] == "blocked"
+    assert record["stop_reason"] == "human_action_required"
+
+
+def test_advisory_authenticated_source_gap_requires_review_without_blocking():
+    kwargs = base_loop_kwargs()
+    kwargs["query_plan"] = {
+        **kwargs["query_plan"],
+        "auth_challenge_summary": {
+            "total": 1,
+            "completed": 0,
+            "pending_human_actions": 0,
+            "advisory_coverage_gaps": 1,
+        },
+    }
+
+    record = build_loop_record(**kwargs)
+
+    human_gate = next(
+        result for result in record["check_results"] if result["check_id"] == "human_gates"
+    )
+    assert human_gate["status"] == "warn"
+    assert record["loop_status"] == "complete_with_review_required"

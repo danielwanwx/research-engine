@@ -22,6 +22,7 @@ class ResearchWizardPlan:
     platform_scope: str
     external_evidence_paths: list[Path]
     agent_reach: bool
+    browser_auth: str = "auto"
     output_dir: Path = Path("runs")
     source_timeout_seconds: float = 10.0
 
@@ -64,6 +65,7 @@ def run_research_wizard(
         external_evidence_paths=plan.external_evidence_paths,
         platform_scope=plan.platform_scope,
         agent_reach=plan.agent_reach,
+        browser_auth=plan.browser_auth,
     )
     render_result(result, output_func=output_func)
     return 0
@@ -128,6 +130,7 @@ def build_wizard_plan(
     output_func(f"- platform scope: {platform_scope}")
     output_func(f"- external evidence files: {len(external_paths)}")
     output_func(f"- AgentReach bridge: {'enabled' if agent_reach else 'disabled'}")
+    output_func("- authenticated browser: asks per site before visible sign-in; consent is remembered")
     output_func("- safety: no posting, messaging, trading, uploads, or account mutation")
     confirmed = ask_yes_no("Run now?", input_func=input_func, default=False)
     if not confirmed:
@@ -139,6 +142,7 @@ def build_wizard_plan(
         platform_scope=platform_scope,
         external_evidence_paths=external_paths,
         agent_reach=agent_reach,
+        browser_auth="auto",
     )
 
 

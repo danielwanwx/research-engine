@@ -53,6 +53,23 @@ Requires Python 3.10 or newer.
 python -m pip install -e '.[dev]'
 ```
 
+For optional visible, user-consented login recovery:
+
+```bash
+python -m pip install -e '.[browser]'
+playwright install chromium
+research-engine doctor browser
+```
+
+If login is required, Research Engine hands the dedicated site profile to normal
+installed Chrome. Complete SSO/MFA/CAPTCHA, return to the Research Engine tab,
+click **Close window and verify sign-in**, and the guarded Playwright capture resumes.
+Chrome closes briefly during verification. If the site still shows a login wall,
+the same login window reopens automatically, up to three attempts within the
+five-minute login budget.
+Set `RESEARCH_ENGINE_LOGIN_BROWSER` only when Chrome is installed in a nonstandard
+location.
+
 For the simplest flow, run the interactive wizard:
 
 ```bash
@@ -70,7 +87,16 @@ For scripted runs:
 research-engine run "research AI coding agents" --pack auto --output runs
 research-engine run "research DRAM HBM supply shortage" --pack auto --depth deep --output runs
 research-engine run "research Lenny memory discussion" --external-evidence exports/lenny.jsonl --output runs
+research-engine run "LinkedIn agent engineering evidence" --browser-auth auto --output runs
+research-engine run "strict public-only research" --browser-auth never --output runs
 ```
+
+Deep and audit `job_market` runs schedule LinkedIn as an authenticated discovery
+source even when it is not named in the topic. Official company careers pages and
+ATS listings remain the source of truth for active-opening counts. If a scheduled
+LinkedIn pass cannot run in a noninteractive session, the run continues with a
+recorded coverage gap and review-required confidence; explicitly requested
+LinkedIn research remains a blocking human gate.
 
 Unseeded CLI runs use anonymous AnySearch discovery by default. Query text crosses
 that third-party boundary, which is recorded in `query_plan.json`. Opt out with
@@ -110,6 +136,7 @@ Check optional local capabilities:
 research-engine doctor
 research-engine doctor agentreach
 research-engine doctor opencli --format json
+research-engine doctor browser
 ```
 
 Run tests:
@@ -150,6 +177,7 @@ runs/<timestamp-or-topic>/
 ├── evidence_quality.json
 ├── facet_coverage.json
 ├── repair_record.json
+├── auth_challenges.jsonl
 ├── claim_review.json
 ├── supply_demand_matrix.json
 ├── decision_brief.json
@@ -181,6 +209,7 @@ Important files:
 - `chunks.jsonl` preserves stable parent-linked chunks and extracted table provenance;
   chunk rows participate in relevance, deduplication, conflicts, and synthesis.
 - `repair_record.json` explains the optional single pass-2 repair and its stop reason.
+- `auth_challenges.jsonl` records consent/login recovery status without browser secrets.
 - `collection_execution.json` records connector status, retries, warnings,
   cache hits, and row counts.
 - `cost_record.json` records the paid-call budget, attempts, available usage,
@@ -223,6 +252,7 @@ Built-in connectors include:
 | `official_job_discovery` | Scoped official ATS/company-career discovery |
 | `agent_reach_bridge` | Optional AgentReach/upstream CLI bridge output |
 | `opencli_bridge` | Optional OpenCLI read-only adapter output |
+| `authenticated_browser` | Optional visible Playwright recovery after per-site consent |
 
 See [docs/connector-support.md](docs/connector-support.md) for the current
 support matrix and planned connectors.
@@ -249,7 +279,7 @@ agent workflows.
 | Tool type | Good at | Research Engine's role |
 | --- | --- | --- |
 | Web crawlers | Fetching pages at scale | Normalize, score, de-duplicate, and synthesize evidence |
-| Browser automation | Logged-in or dynamic workflows | Import authorized read-only captures as JSONL |
+| Browser automation | Logged-in or dynamic workflows | Run bounded user-consented recipes or import authorized JSONL captures |
 | AgentReach-style CLIs | Exposing platform-specific tools | Treat CLI output as connector evidence |
 | OpenCLI-style adapters | Turning websites into commands | Run allowlisted read-only adapters behind the same contract |
 | LLM agents | Reasoning and writing | Consume auditable artifacts after checks run |
@@ -271,11 +301,27 @@ research-engine run "research Lenny memory discussion" \
   --output runs
 ```
 
-Research Engine does not read browser cookies, bypass login walls, scrape around
-paywalls, or ask for passwords/API keys in prompts. Artifact references store
+For the supported recipe batch, Research Engine opens a dedicated profile after
+showing an exact-origin consent screen. Normal Chrome handles user-controlled
+login, SSO, MFA, and CAPTCHA; Playwright is closed during login and resumes only
+for guarded read-only capture. The engine never asks for credentials or copies
+browser cookies/storage into artifacts. It does not bypass robots denial,
+paywalls, rate limits, or entitlements. Artifact references store
 evidence filenames and stable path hashes rather than full local paths. Token-like
 fields, authorization headers, cookie values, and command payloads are sanitized
 before artifacts are written.
+
+The first fixture-verified recipes cover LinkedIn, X, Reddit, Blind, Glassdoor,
+Indeed, 一亩三分地, Hacker News, GitHub, and Stack Overflow. YouTube remains
+caption/transcript-first through `yt-dlp` for fast text retrieval.
+
+Consent and dedicated profiles can be managed without exposing their contents:
+
+```bash
+research-engine auth list
+research-engine auth revoke linkedin
+research-engine auth clear-profile linkedin
+```
 
 ## Minimal Connector Example
 
@@ -312,8 +358,8 @@ Research Engine is alpha software.
 - PDF extraction uses an allowlisted local `pdftotext` when available and otherwise
   records an explicit invalid reason.
 - Optional bridge connectors depend on local tools being installed and configured.
-- Logged-in or paid sources must be provided as authorized exports, not raw
-  credentials.
+- Unsupported logged-in or paid sources still require authorized exports; raw
+  credentials are never accepted.
 - Quality scoring is deterministic and inspectable, but still early.
 - The engine prepares evidence for analysis; it does not replace expert judgment.
 

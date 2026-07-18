@@ -1,0 +1,72 @@
+{
+  "linkedin": {
+    "url": "https://www.linkedin.com/search/results/content/",
+    "item_selector": "div.feed-shared-update-v2",
+    "text_selector": ".feed-shared-update-v2__description",
+    "html": "<div class=\"feed-shared-update-v2\"><div class=\"feed-shared-update-v2__description\">LinkedIn fixture evidence</div></div>",
+    "expected_text": "LinkedIn fixture evidence"
+  },
+  "x": {
+    "url": "https://x.com/search",
+    "item_selector": "article[data-testid='tweet']",
+    "text_selector": "div[data-testid='tweetText']",
+    "html": "<article data-testid=\"tweet\"><div data-testid=\"tweetText\">X fixture evidence</div></article>",
+    "expected_text": "X fixture evidence"
+  },
+  "reddit": {
+    "url": "https://www.reddit.com/search/",
+    "item_selector": "shreddit-post",
+    "text_selector": "[slot='text-body']",
+    "html": "<shreddit-post><div slot=\"text-body\">Reddit fixture evidence</div></shreddit-post>",
+    "expected_text": "Reddit fixture evidence"
+  },
+  "blind": {
+    "url": "https://www.teamblind.com/search/test",
+    "item_selector": "article",
+    "text_selector": "[class*='content']",
+    "html": "<article><div class=\"post-content\">Blind fixture evidence</div></article>",
+    "expected_text": "Blind fixture evidence"
+  },
+  "glassdoor": {
+    "url": "https://www.glassdoor.com/Search/results.htm",
+    "item_selector": "[data-test='review-details-container']",
+    "text_selector": "[data-test='review-text']",
+    "html": "<article data-test=\"review-details-container\"><p data-test=\"review-text\">Glassdoor fixture evidence</p></article>",
+    "expected_text": "Glassdoor fixture evidence"
+  },
+  "indeed": {
+    "url": "https://www.indeed.com/jobs",
+    "item_selector": ".job_seen_beacon",
+    "text_selector": ".job-snippet",
+    "html": "<article class=\"job_seen_beacon\"><div class=\"job-snippet\">Indeed fixture evidence</div></article>",
+    "expected_text": "Indeed fixture evidence"
+  },
+  "onepointthreeacres": {
+    "url": "https://www.1point3acres.com/bbs/search.php",
+    "item_selector": "tbody[id^='normalthread_']",
+    "text_selector": ".xst",
+    "html": "<table><tbody id=\"normalthread_1\"><tr><td><a class=\"xst\">一亩三分地 fixture evidence</a></td></tr></tbody></table>",
+    "expected_text": "一亩三分地 fixture evidence"
+  },
+  "hackernews": {
+    "url": "https://hn.algolia.com/",
+    "item_selector": ".SearchResults_item",
+    "text_selector": ".Story_title",
+    "html": "<article class=\"SearchResults_item\"><div class=\"Story_title\">Hacker News fixture evidence</div></article>",
+    "expected_text": "Hacker News fixture evidence"
+  },
+  "github": {
+    "url": "https://github.com/search",
+    "item_selector": ".Box-row",
+    "text_selector": ".mb-1",
+    "html": "<div class=\"Box-row\"><p class=\"mb-1\">GitHub fixture evidence</p></div>",
+    "expected_text": "GitHub fixture evidence"
+  },
+  "stackoverflow": {
+    "url": "https://stackoverflow.com/search",
+    "item_selector": ".s-post-summary",
+    "text_selector": ".s-post-summary--content-excerpt",
+    "html": "<div class=\"s-post-summary\"><div class=\"s-post-summary--content-excerpt\">Stack Overflow fixture evidence</div></div>",
+    "expected_text": "Stack Overflow fixture evidence"
+  }
+}

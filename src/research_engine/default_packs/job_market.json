@@ -61,8 +61,12 @@
   ],
   "source_strategy": {
     "primary": ["official_ats", "official_careers"],
-    "discovery_only": ["web_search", "job_board_mirror"],
+    "discovery_only": ["web_search", "job_board_mirror", "linkedin"],
     "active_opening_requires_final_official_page": true
+  },
+  "platforms_by_depth": {
+    "deep": ["linkedin"],
+    "audit": ["linkedin"]
   },
   "sources": [],
   "claim_specs": [],

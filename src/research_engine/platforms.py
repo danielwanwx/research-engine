@@ -185,9 +185,10 @@ def build_platform_research_plan(
     *,
     scope: str = "broad",
     pack: dict[str, Any] | None = None,
+    depth: str = "quick",
 ) -> list[dict[str, Any]]:
     normalized_scope = scope if scope in {"quick", "broad", "deep", "all"} else "broad"
-    pack_platforms = {str(platform) for platform in (pack or {}).get("platforms") or []}
+    pack_platforms = pack_platforms_for_depth(pack, depth)
     plan: list[dict[str, Any]] = []
     for profile in PLATFORM_PROFILES:
         if normalized_scope not in profile.scopes and profile.platform not in pack_platforms:
@@ -205,6 +206,19 @@ def build_platform_research_plan(
             }
         )
     return plan
+
+
+def pack_platforms_for_depth(
+    pack: dict[str, Any] | None,
+    depth: str,
+) -> set[str]:
+    """Return always-on pack platforms plus the platforms enabled for this depth."""
+    resolved = pack or {}
+    platforms = {str(platform) for platform in resolved.get("platforms") or []}
+    depth_platforms = resolved.get("platforms_by_depth") or {}
+    if isinstance(depth_platforms, dict):
+        platforms.update(str(platform) for platform in depth_platforms.get(depth) or [])
+    return platforms
 
 
 def platform_query(

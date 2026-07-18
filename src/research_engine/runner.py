@@ -13,6 +13,7 @@ from research_engine.conflicts import build_independence_key
 from research_engine.connectors import (
     AgentReachBridgeConnector,
     AnySearchConnector,
+    AuthenticatedBrowserConnector,
     ExternalJsonlConnector,
     FinanceQuoteConnector,
     GitHubPublicSearchConnector,
@@ -23,6 +24,7 @@ from research_engine.connectors import (
     WebSearchConnector,
     XaiDiscoveryConnector,
 )
+from research_engine.browser_recipes import recipe_for_platform, recipe_for_url
 from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
 from research_engine.extraction import build_chunks
 from research_engine.freshness import enrich_row_freshness
@@ -32,7 +34,7 @@ from research_engine.models import CollectionRequest, CollectionResult, Research
 from research_engine.packs import pack_summary, select_research_pack
 from research_engine.pdf_report import render_pdf_report
 from research_engine.planning import build_query_plan, collection_requests_from_plan
-from research_engine.platforms import build_platform_research_plan
+from research_engine.platforms import build_platform_research_plan, pack_platforms_for_depth
 from research_engine.quality import canonicalize_url, enrich_rows_with_quality
 from research_engine.repair import build_repair_plan, progress_fingerprint
 from research_engine.security import (
@@ -62,6 +64,7 @@ ConnectorProvider = Any | Callable[[], Any]
 DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
     AgentReachBridgeConnector.connector_id: AgentReachBridgeConnector,
     AnySearchConnector.connector_id: AnySearchConnector,
+    AuthenticatedBrowserConnector.connector_id: AuthenticatedBrowserConnector,
     ExternalJsonlConnector.connector_id: ExternalJsonlConnector,
     FinanceQuoteConnector.connector_id: FinanceQuoteConnector,
     GitHubPublicSearchConnector.connector_id: GitHubPublicSearchConnector,
@@ -127,10 +130,13 @@ class ResearchEngine:
         search_provider: str = "none",
         search_endpoint: str = "",
         as_of: str | None = None,
+        browser_auth: str = "auto",
     ) -> ResearchRunResult:
         if depth not in DEPTH_MAX_RESULTS:
             supported = ", ".join(sorted(DEPTH_MAX_RESULTS))
             raise ValueError(f"unsupported depth: {depth}; supported: {supported}")
+        if browser_auth not in {"auto", "never"}:
+            raise ValueError("browser_auth must be 'auto' or 'never'")
         resolved_target = ResearchTarget.from_mapping(target) if target is not None else None
         selected_pack = select_research_pack(topic, pack_dir=self.pack_dir, pack_id=pack_id)
         resolved_date = run_date or date.today().isoformat()
@@ -150,10 +156,12 @@ class ResearchEngine:
         requested_run_id = f"{resolved_date}-{slug or slugify(topic)}"
         run_id, run_dir = reserve_run_dir(self.output_dir, requested_run_id)
         max_results = DEPTH_MAX_RESULTS[depth]
+        effective_pack_platforms = pack_platforms_for_depth(selected_pack, depth)
         platform_plan = build_platform_research_plan(
             topic,
             scope=platform_scope,
             pack=selected_pack,
+            depth=depth,
         )
         source_requests = build_source_requests(
             selected_pack,
@@ -229,7 +237,9 @@ class ResearchEngine:
                     request.source.get("connector") == "web_search"
                     for request in source_requests
                 ),
+                "authenticated_browser": browser_auth == "auto",
             },
+            "browser_auth": browser_auth,
             "agent_reach_commands": [
                 redact_text(template) for template in agent_reach_command_templates or []
             ],
@@ -279,6 +289,17 @@ class ResearchEngine:
                 ]
                 if resolved_target
                 else []
+            )
+            + (
+                [
+                    {
+                        "source_id": "browser_authenticated_recovery",
+                        "connector": "authenticated_browser",
+                        "conditional": True,
+                    }
+                ]
+                if browser_auth == "auto"
+                else []
             ),
         }
         loop_contract = build_loop_contract(
@@ -322,8 +343,7 @@ class ResearchEngine:
             "after_progress_fingerprint": "",
             "stop_reason": "dry_run" if dry_run else "not_required",
         }
-        if not dry_run and not source_requests:
-            warnings.append(f"research pack {selected_pack.get('id')} has no executable sources")
+        auth_challenges: list[dict[str, Any]] = []
         if not dry_run:
             executable_requests = [
                 CollectionRequest(
@@ -406,6 +426,31 @@ class ResearchEngine:
                     collection_results.extend(refetch_results)
                     warnings.extend(refetch_warnings)
                     execution_report = merge_execution_reports(execution_report, refetch_report)
+            browser_requests = build_authenticated_browser_requests(
+                collection_results,
+                platform_plan=platform_plan,
+                topic=topic,
+                run_date=resolved_date,
+                depth=depth,
+                max_results=max_results,
+                browser_auth=browser_auth,
+                pack_platforms=effective_pack_platforms,
+            )
+            if browser_requests:
+                source_requests.extend(browser_requests)
+                browser_results, browser_warnings, browser_report = execute_collection_requests(
+                    browser_requests,
+                    connector_providers=self.connector_factories,
+                    options=browser_execution_options(),
+                )
+                collection_results.extend(browser_results)
+                warnings.extend(browser_warnings)
+                execution_report = merge_execution_reports(execution_report, browser_report)
+                auth_challenges = auth_challenges_from_results(browser_results)
+            if not source_requests:
+                warnings.append(
+                    f"research pack {selected_pack.get('id')} has no executable sources"
+                )
             if not resolved_target:
                 interim_rows = normalize_rows(collection_results)
                 interim_rows = enrich_rows_with_freshness(
@@ -517,6 +562,7 @@ class ResearchEngine:
                             ),
                         }
                     )
+        query_plan["auth_challenge_summary"] = summarize_auth_challenges(auth_challenges)
         reconcile_query_plan(query_plan, execution_report)
         rows = normalize_rows(collection_results)
         rows, sanitation_warnings = sanitize_rows_for_artifacts(rows)
@@ -592,6 +638,7 @@ class ResearchEngine:
                 claim_review["claim_context"] = context
                 for claim in claim_review.get("claims") or []:
                     claim["claim_context"] = context
+        apply_auth_coverage_confidence_ceiling(claim_review, auth_challenges)
         job_market_snapshot: dict[str, Any] | None = None
         if query_plan.get("profile") == "job_market" and m2_plan.get("scope"):
             job_market_snapshot = build_job_market_snapshot_from_run(
@@ -657,6 +704,10 @@ class ResearchEngine:
                 "status_counts": execution_report.get("status_counts") or {},
                 "cache_enabled": bool(execution_report.get("cache_enabled")),
                 "paid_calls_attempted": cost_record["paid_calls_attempted"],
+                "auth_challenges": len(auth_challenges),
+                "pending_human_actions": query_plan["auth_challenge_summary"][
+                    "pending_human_actions"
+                ],
             },
             "quality_summary": {
                 "average_quality_score": quality_report.get("average_quality_score"),
@@ -674,6 +725,7 @@ class ResearchEngine:
         write_json(run_dir / "collection_execution.json", execution_report)
         write_json(run_dir / "cost_record.json", cost_record)
         write_json(run_dir / "repair_record.json", repair_record)
+        write_jsonl(run_dir / "auth_challenges.jsonl", auth_challenges)
         write_jsonl(run_dir / "evidence.jsonl", rows)
         write_jsonl(run_dir / "chunks.jsonl", chunks)
         write_json(run_dir / "evidence_quality.json", quality_report)
@@ -1525,6 +1577,236 @@ def merge_execution_reports(*reports: dict[str, Any]) -> dict[str, Any]:
         }
     )
     return base
+
+
+RECOVERABLE_BROWSER_REASONS = {
+    "access_blocked",
+    "browser_verification",
+    "captcha",
+    "enable_javascript",
+    "human_verification",
+    "javascript_shell",
+    "login_wall",
+    "security_check",
+}
+NON_RECOVERABLE_BROWSER_REASONS = {
+    "access_denied",
+    "paywall",
+    "rate_limit",
+    "robots_denied",
+    "unusual_traffic",
+}
+RECIPE_TOPIC_ALIASES = {
+    "linkedin": ("linkedin", "领英"),
+    "x": ("twitter", "x.com"),
+    "reddit": ("reddit",),
+    "blind": ("teamblind", "blind forum"),
+    "glassdoor": ("glassdoor",),
+    "indeed": ("indeed",),
+    "onepointthreeacres": ("1point3acres", "一亩三分地"),
+    "hackernews": ("hacker news", "ycombinator news"),
+    "github": ("github",),
+    "stackoverflow": ("stack overflow", "stackoverflow"),
+}
+
+
+def browser_execution_options() -> ConnectorExecutionOptions:
+    """Browser work is serialized and owns its bounded human-login timeout."""
+    return ConnectorExecutionOptions(
+        max_workers=1,
+        retries=0,
+        cache_dir=None,
+        source_timeout_seconds=None,
+        overall_deadline_seconds=None,
+        host_max_concurrency=1,
+        host_delay_seconds=0.0,
+    )
+
+
+def build_authenticated_browser_requests(
+    results: list[CollectionResult],
+    *,
+    platform_plan: list[dict[str, Any]],
+    topic: str,
+    run_date: str,
+    depth: str,
+    max_results: int,
+    browser_auth: str,
+    pack_platforms: set[str],
+) -> list[CollectionRequest]:
+    if browser_auth != "auto":
+        return []
+
+    sources: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add_source(
+        *,
+        recipe_id: str,
+        url: str,
+        reason: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        key = (recipe_id, canonicalize_url(url))
+        if not url or key in seen:
+            return
+        seen.add(key)
+        sources.append(
+            {
+                "source_id": f"browser_auth_{recipe_id}_{len(sources) + 1}",
+                "connector": "authenticated_browser",
+                "recipe_id": recipe_id,
+                "target_url": url,
+                "challenge_reason": reason,
+                "source_kind": "authenticated_browser_recovery",
+                "access_mode": "user_consented_browser",
+                "pass_id": "browser-recovery",
+                **dict(metadata or {}),
+            }
+        )
+
+    for result in results:
+        for row in result.rows:
+            reasons = {
+                str(reason) for reason in row.get("content_invalid_reasons") or [] if reason
+            }
+            if row.get("access_blocked") and not reasons:
+                reasons.add("access_blocked")
+            if reasons & NON_RECOVERABLE_BROWSER_REASONS:
+                continue
+            recoverable = sorted(reasons & RECOVERABLE_BROWSER_REASONS)
+            if not recoverable:
+                continue
+            url = str(row.get("final_url") or row.get("url") or "")
+            recipe = recipe_for_url(url)
+            parsed = urlsplit(url)
+            if not recipe and (parsed.scheme not in {"http", "https"} or not parsed.netloc):
+                continue
+            add_source(
+                recipe_id=recipe.recipe_id if recipe else "generic",
+                url=url,
+                reason=recoverable[0],
+                metadata={
+                    key: row[key]
+                    for key in ("query_id", "facet_id")
+                    if row.get(key)
+                },
+            )
+
+    for platform in platform_plan:
+        platform_id = str(platform.get("platform") or "")
+        recipe = recipe_for_platform(platform_id)
+        if not recipe:
+            continue
+        explicitly_requested = topic_mentions_recipe(topic, recipe.recipe_id)
+        pack_requested = platform_id in pack_platforms
+        if not explicitly_requested and not pack_requested:
+            continue
+        url = str(platform.get("search_url") or recipe.search_url(topic))
+        add_source(
+            recipe_id=recipe.recipe_id,
+            url=url,
+            reason=(
+                "explicit_platform_request"
+                if explicitly_requested
+                else "pack_platform_priority"
+            ),
+            metadata={
+                "query": str(platform.get("query") or topic),
+                "platform": platform_id,
+                "auth_gate_policy": (
+                    "blocking" if explicitly_requested else "advisory"
+                ),
+            },
+        )
+
+    for recipe_id in RECIPE_TOPIC_ALIASES:
+        if not topic_mentions_recipe(topic, recipe_id):
+            continue
+        recipe = recipe_for_platform(recipe_id)
+        if recipe:
+            add_source(
+                recipe_id=recipe.recipe_id,
+                url=recipe.search_url(topic),
+                reason="explicit_platform_request",
+                metadata={"query": topic},
+            )
+
+    return [
+        CollectionRequest(
+            source=source,
+            topic=topic,
+            run_date=run_date,
+            depth=depth,
+            max_results=max_results,
+        )
+        for source in sources
+    ]
+
+
+def topic_mentions_recipe(topic: str, recipe_id: str) -> bool:
+    normalized = str(topic).casefold()
+    return any(alias.casefold() in normalized for alias in RECIPE_TOPIC_ALIASES.get(recipe_id, ()))
+
+
+def auth_challenges_from_results(results: list[CollectionResult]) -> list[dict[str, Any]]:
+    by_id: dict[str, dict[str, Any]] = {}
+    for result in results:
+        for challenge in result.metadata.get("auth_challenges") or []:
+            if not isinstance(challenge, dict):
+                continue
+            safe = sanitize_for_artifact(challenge)
+            if not isinstance(safe, dict):
+                continue
+            challenge_id = str(safe.get("challenge_id") or "")
+            if challenge_id:
+                by_id[challenge_id] = safe
+    return list(by_id.values())
+
+
+def summarize_auth_challenges(challenges: list[dict[str, Any]]) -> dict[str, int]:
+    statuses = [str(challenge.get("status") or "pending") for challenge in challenges]
+    return {
+        "total": len(challenges),
+        "completed": statuses.count("completed"),
+        "pending_human_actions": sum(
+            bool(challenge.get("human_action_required"))
+            and bool(challenge.get("blocking", True))
+            and status != "completed"
+            for challenge, status in zip(challenges, statuses)
+        ),
+        "advisory_coverage_gaps": sum(
+            bool(challenge.get("coverage_missing"))
+            and not bool(challenge.get("blocking", True))
+            and status != "completed"
+            for challenge, status in zip(challenges, statuses)
+        ),
+    }
+
+
+def apply_auth_coverage_confidence_ceiling(
+    claim_review: dict[str, Any],
+    challenges: list[dict[str, Any]],
+) -> None:
+    """Bound confidence when a pack-scheduled authenticated source is missing."""
+    missing_platforms = sorted(
+        {
+            str(challenge.get("recipe_id") or "authenticated_source")
+            for challenge in challenges
+            if challenge.get("coverage_missing") and not challenge.get("blocking", True)
+        }
+    )
+    if not missing_platforms:
+        return
+    overall = claim_review.setdefault("overall", {})
+    overall["confidence_ceiling"] = "medium"
+    if overall.get("confidence") == "high":
+        overall["confidence"] = "medium"
+    risk_flags = overall.setdefault("risk_flags", [])
+    for platform in missing_platforms:
+        flag = f"{platform}_coverage_missing"
+        if not any(str(value).startswith(flag) for value in risk_flags):
+            risk_flags.append(flag)
 
 
 def build_cost_record(

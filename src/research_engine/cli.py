@@ -9,6 +9,7 @@ import sys
 from typing import Any
 
 from research_engine.artifacts import append_jsonl
+from research_engine.browser_auth import ConsentStore, clear_browser_profile
 from research_engine.doctor import render_doctor_text, run_doctor
 from research_engine.models import utc_now
 from research_engine.runner import ResearchEngine
@@ -16,7 +17,7 @@ from research_engine.security import redact_command, redact_text
 from research_engine.targets import ResearchTarget
 
 
-COMMANDS = {"run", "doctor"}
+COMMANDS = {"run", "doctor", "auth"}
 
 
 def research_main(argv: list[str] | None = None) -> int:
@@ -34,6 +35,10 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor", help="Check local Research Engine capabilities."
     )
     add_doctor_arguments(doctor_parser)
+    auth_parser = subparsers.add_parser(
+        "auth", help="List or revoke browser consent and dedicated profiles."
+    )
+    add_auth_arguments(auth_parser)
     return parser
 
 
@@ -148,13 +153,19 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
         default=0.1,
         help="Minimum delay between starts for the same public host.",
     )
+    parser.add_argument(
+        "--browser-auth",
+        choices=["auto", "never"],
+        default="auto",
+        help="Ask for consent and visible sign-in on recoverable supported sites, or disable it.",
+    )
 
 
 def add_doctor_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "target",
         nargs="?",
-        choices=["all", "agentreach", "opencli", "chrome"],
+        choices=["all", "agentreach", "opencli", "browser", "chrome"],
         default="all",
         help="Capability group to check.",
     )
@@ -175,6 +186,56 @@ def add_doctor_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Do not write state/connector_capabilities.json.",
     )
+
+
+def add_auth_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--root",
+        type=Path,
+        help="Override the browser-auth state root (primarily for isolated environments).",
+    )
+    actions = parser.add_subparsers(dest="auth_action", required=True)
+    list_parser = actions.add_parser("list", help="List remembered exact-origin grants.")
+    list_parser.add_argument("--format", choices=["text", "json"], default="text")
+    revoke_parser = actions.add_parser("revoke", help="Revoke remembered consent for one site.")
+    revoke_parser.add_argument("recipe_id")
+    revoke_parser.add_argument("--origin", default="")
+    clear_parser = actions.add_parser(
+        "clear-profile", help="Delete the dedicated Playwright profile for one site."
+    )
+    clear_parser.add_argument("recipe_id")
+    clear_parser.add_argument(
+        "--origin", default="", help="Required exact origin for a generic-site profile."
+    )
+
+
+def run_auth_command(args: argparse.Namespace) -> int:
+    store = ConsentStore(args.root)
+    if args.auth_action == "list":
+        grants = store.list_grants()
+        if args.format == "json":
+            print(json.dumps({"grants": grants}, ensure_ascii=False, indent=2))
+        elif not grants:
+            print("No remembered browser consent grants.")
+        else:
+            for grant in grants:
+                print(
+                    f"{grant.get('recipe_id')} v{grant.get('recipe_version')} "
+                    f"{grant.get('origin')}"
+                )
+        return 0
+    if args.auth_action == "revoke":
+        removed = store.revoke(
+            recipe_id=str(args.recipe_id).strip().lower(),
+            origin=args.origin or None,
+        )
+        print(f"Revoked {removed} consent grant(s).")
+        return 0
+    if args.auth_action == "clear-profile":
+        cleared = clear_browser_profile(args.recipe_id, root=args.root, origin=args.origin)
+        print("Profile cleared." if cleared else "Profile was already absent.")
+        return 0
+    return 2
 
 
 def append_invocation_record(
@@ -217,6 +278,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(render_doctor_text(report), end="")
         return 1 if report.get("status") == "failed" else 0
+    if args.command == "auth":
+        return run_auth_command(args)
     started_at = utc_now()
     result = None
     rendered_result = ""
@@ -266,6 +329,7 @@ def main(argv: list[str] | None = None) -> int:
             search_provider=args.search_provider,
             search_endpoint=args.search_endpoint,
             as_of=args.as_of or None,
+            browser_auth=args.browser_auth,
         )
         rendered_result = json.dumps(result.as_dict(), ensure_ascii=False, indent=2)
     except BaseException as exc:

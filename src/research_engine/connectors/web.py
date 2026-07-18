@@ -52,12 +52,6 @@ class FetchedPage:
     network_telemetry: dict[str, Any] = field(default_factory=dict)
 
 
-class PublicRedirectHandler(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        validate_public_url(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
 class RobotsPolicy:
     """Host-scoped robots policy with injectable transport and cached decisions."""
 
@@ -242,7 +236,6 @@ class WebPageConnector:
             url = str(page.get("url") or "")
             if not url:
                 continue
-            body_status = "empty"
             try:
                 fetched = (
                     self.fetcher(url)

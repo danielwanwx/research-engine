@@ -98,6 +98,15 @@ def test_profile_packs_route_only_on_explicit_domain_intent():
     )
 
 
+def test_job_market_enables_linkedin_only_for_deep_and_audit_runs():
+    pack = select_research_pack("US software engineer employment market")
+
+    assert pack["platforms_by_depth"] == {
+        "deep": ["linkedin"],
+        "audit": ["linkedin"],
+    }
+
+
 def test_invalid_profile_overlay_is_rejected(tmp_path):
     (tmp_path / "technical.json").write_text(
         json.dumps(
