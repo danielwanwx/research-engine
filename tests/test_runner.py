@@ -334,6 +334,7 @@ def test_runner_dry_run_writes_plan_artifacts(tmp_path):
     result = engine.run(
         "DRAM HBM shortage",
         dry_run=True,
+        report_mode="full",
         run_date="2026-06-21",
         slug="memory-dry-run",
     )
@@ -841,6 +842,7 @@ def test_pdf_failure_is_disclosed_without_changing_research_status(tmp_path, mon
 
     result = engine.run(
         "restaurant lease negotiation",
+        report_mode="full",
         run_date="2026-06-21",
         slug="pdf-failure",
     )
@@ -979,6 +981,7 @@ def test_runner_collects_with_injected_connectors_and_writes_synthesis(tmp_path)
 
     result = engine.run(
         "DRAM HBM shortage",
+        report_mode="full",
         run_date="2026-06-21",
         slug="memory-collect",
     )
@@ -1129,7 +1132,12 @@ def test_runner_sanitizes_custom_connector_rows_before_artifact_write(tmp_path):
         source_timeout_seconds=10,
     )
 
-    result = engine.run("custom connector sensitive row", run_date="2026-06-27", slug="safe")
+    result = engine.run(
+        "custom connector sensitive row",
+        report_mode="full",
+        run_date="2026-06-27",
+        slug="safe",
+    )
 
     run_dir = tmp_path / "runs/2026-06-27-safe"
     artifact_text = "\n".join(
@@ -1274,6 +1282,8 @@ def test_cli_imports_external_evidence_jsonl(tmp_path, capsys):
             str(evidence_path),
             "--search-provider",
             "none",
+            "--report-mode",
+            "full",
         ]
     )
     captured = capsys.readouterr()
@@ -1326,6 +1336,8 @@ def test_cli_external_evidence_redacts_secrets_from_artifacts(tmp_path, capsys):
             str(evidence_path),
             "--search-provider",
             "none",
+            "--report-mode",
+            "full",
         ]
     )
     payload = json.loads(capsys.readouterr().out)
@@ -1366,6 +1378,8 @@ def test_cli_external_evidence_directory_warning_does_not_leak_full_path(tmp_pat
             str(evidence_path),
             "--search-provider",
             "none",
+            "--report-mode",
+            "full",
         ]
     )
     payload = json.loads(capsys.readouterr().out)

@@ -159,6 +159,12 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
         default="auto",
         help="Ask for consent and visible sign-in on recoverable supported sites, or disable it.",
     )
+    parser.add_argument(
+        "--report-mode",
+        choices=["summary", "full"],
+        default="summary",
+        help="Write the concise JSON summary (default) or request Markdown/PDF reports.",
+    )
 
 
 def add_doctor_arguments(parser: argparse.ArgumentParser) -> None:
@@ -330,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
             search_endpoint=args.search_endpoint,
             as_of=args.as_of or None,
             browser_auth=args.browser_auth,
+            report_mode=args.report_mode,
         )
         rendered_result = json.dumps(result.as_dict(), ensure_ascii=False, indent=2)
     except BaseException as exc:

@@ -48,6 +48,7 @@ class ResearchRunResult:
     pdf_report_path: str = ""
     pdf_report_status: str = ""
     warnings: list[str] = field(default_factory=list)
+    report_mode: str = "summary"
 
     def as_dict(self) -> dict[str, Any]:
         payload = asdict(self)

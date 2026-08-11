@@ -29,10 +29,13 @@ research artifacts.
 ```bash
 cd /Users/danielwan/Project/research-engine
 PYTHONPATH=src /opt/homebrew/opt/python@3.10/bin/python3.10 -m research_engine.cli \
-  run "<topic>" --pack auto --depth deep --output runs
+  run "<topic>" --pack auto --depth deep --report-mode summary --output runs
 ```
 
-3. Add advanced flags such as `--scope-file`, `--external-evidence`,
+3. The default `--report-mode summary` writes the concise, machine-readable
+   `research_summary.json` and skips human-facing documents. Pass
+   `--report-mode full` only when the user explicitly requests a report,
+   article, long-form analysis, Markdown document, or PDF. Add advanced flags such as `--scope-file`, `--external-evidence`,
    `--browser-auth`, or an explicit `--pack` only when the request requires
    them. Keep `--pack auto` for ordinary company, role, business, and market
    research; do not force `interview_prep` without explicit interview intent.
@@ -44,9 +47,11 @@ PYTHONPATH=src /opt/homebrew/opt/python@3.10/bin/python3.10 -c \
 ```
 
    It must resolve under `/Users/danielwan/Project/research-engine/src`.
-5. Read `run_manifest.json`, `query_plan.json`, `evidence.jsonl`, `evidence_quality.json`,
-   `loop_contract.json`, and `loop_record.json` before summarizing results to
-   the user.
+5. Read `research_summary.json` first. Inspect `evidence.jsonl`,
+   `evidence_quality.json`, claim and loop artifacts only when the summary is
+   incomplete, contested, or the user requires citation verification. Read
+   `run_manifest.json`, `query_plan.json`, and `loop_contract.json` when the
+   run needs audit/debug context.
 
 ## Source Rules
 

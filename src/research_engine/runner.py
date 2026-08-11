@@ -8,7 +8,13 @@ import re
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
-from research_engine.artifacts import render_report, slugify, write_json, write_jsonl
+from research_engine.artifacts import (
+    build_research_summary,
+    render_report,
+    slugify,
+    write_json,
+    write_jsonl,
+)
 from research_engine.conflicts import build_independence_key
 from research_engine.connectors import (
     AgentReachBridgeConnector,
@@ -78,6 +84,7 @@ DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
 
 DEPTH_MAX_RESULTS = {"quick": 3, "deep": 8, "audit": 12}
 TARGET_DISCOVERY_CACHE_TTL_SECONDS = 86_400
+REPORT_MODES = frozenset({"summary", "full"})
 
 
 class ResearchEngine:
@@ -131,12 +138,16 @@ class ResearchEngine:
         search_endpoint: str = "",
         as_of: str | None = None,
         browser_auth: str = "auto",
+        report_mode: str = "summary",
     ) -> ResearchRunResult:
         if depth not in DEPTH_MAX_RESULTS:
             supported = ", ".join(sorted(DEPTH_MAX_RESULTS))
             raise ValueError(f"unsupported depth: {depth}; supported: {supported}")
         if browser_auth not in {"auto", "never"}:
             raise ValueError("browser_auth must be 'auto' or 'never'")
+        if report_mode not in REPORT_MODES:
+            supported = ", ".join(sorted(REPORT_MODES))
+            raise ValueError(f"unsupported report_mode: {report_mode}; supported: {supported}")
         resolved_target = ResearchTarget.from_mapping(target) if target is not None else None
         selected_pack = select_research_pack(topic, pack_dir=self.pack_dir, pack_id=pack_id)
         resolved_date = run_date or date.today().isoformat()
@@ -694,6 +705,7 @@ class ResearchEngine:
             "artifact_contract": "target_intelligence.v1" if resolved_target else "research_engine.v2",
             "profile": str(query_plan.get("profile") or "generic"),
             "as_of": resolved_as_of,
+            "report_mode": report_mode,
             "search_provider": search_provider,
             "target": resolved_target.as_dict() if resolved_target else None,
             "target_outcome": dict(claim_review.get("overall") or {}) if resolved_target else None,
@@ -740,32 +752,63 @@ class ResearchEngine:
         write_json(run_dir / "decision_brief.json", decision_brief)
         write_json(run_dir / "loop_contract.json", loop_contract)
         write_json(run_dir / "loop_record.json", loop_record)
-        (run_dir / "research_report.md").write_text(
-            render_report(
-                topic=topic,
-                pack_id=str(selected_pack.get("id")),
-                raw_rows=rows,
-                claim_review=claim_review,
-                decision_brief=decision_brief,
-                quality_report=quality_report,
-                loop_record=loop_record,
-                status=status,
-                profile=str(query_plan.get("profile") or "generic"),
-                as_of=resolved_as_of,
-                facet_coverage=dict(quality_report.get("facet_coverage") or {}),
-                job_market_snapshot=job_market_snapshot,
-            ),
-            encoding="utf-8",
+        summary = build_research_summary(
+            run_id=run_id,
+            topic=topic,
+            pack=pack_summary(selected_pack),
+            profile=str(query_plan.get("profile") or "generic"),
+            status=status,
+            as_of=resolved_as_of,
+            decision_brief=decision_brief,
+            claim_review=claim_review,
+            quality_report=quality_report,
+            loop_record=loop_record,
+            rows=rows,
+            facet_coverage=dict(quality_report.get("facet_coverage") or {}),
         )
-        pdf_status = render_pdf_report(run_dir)
-        pdf_status["error_message"] = redact_text(pdf_status.get("error_message") or "")
-        write_json(run_dir / "pdf_report_status.json", pdf_status)
-        if pdf_status.get("status") != "generated":
-            warnings.append(
-                "PDF report generation failed: "
-                f"{pdf_status.get('error_type') or 'unknown_error'}"
+        write_json(run_dir / "research_summary.json", summary)
+        if report_mode == "summary":
+            pdf_status = not_requested_pdf_status()
+            report_status = {
+                "status": "not_requested",
+                "markdown": {"status": "not_requested", "path": ""},
+                "pdf": pdf_status,
+            }
+        else:
+            (run_dir / "research_report.md").write_text(
+                render_report(
+                    topic=topic,
+                    pack_id=str(selected_pack.get("id")),
+                    raw_rows=rows,
+                    claim_review=claim_review,
+                    decision_brief=decision_brief,
+                    quality_report=quality_report,
+                    loop_record=loop_record,
+                    status=status,
+                    profile=str(query_plan.get("profile") or "generic"),
+                    as_of=resolved_as_of,
+                    facet_coverage=dict(quality_report.get("facet_coverage") or {}),
+                    job_market_snapshot=job_market_snapshot,
+                ),
+                encoding="utf-8",
             )
+            pdf_status = render_pdf_report(run_dir)
+            pdf_status["error_message"] = redact_text(pdf_status.get("error_message") or "")
+            write_json(run_dir / "pdf_report_status.json", pdf_status)
+            report_status = {
+                "status": "generated" if pdf_status.get("status") == "generated" else "failed",
+                "markdown": {"status": "generated", "path": "research_report.md"},
+                "pdf": pdf_status,
+            }
+            if pdf_status.get("status") != "generated":
+                warnings.append(
+                    "PDF report generation failed: "
+                    f"{pdf_status.get('error_type') or 'unknown_error'}"
+                )
         manifest["warnings"] = warnings
+        manifest["report_mode"] = report_mode
+        manifest["report"] = report_status
+        # Keep the legacy top-level PDF field for consumers of the pre-summary contract.
         manifest["pdf_report"] = pdf_status
         write_json(run_dir / "run_manifest.json", manifest)
         pdf_report_path = (
@@ -785,13 +828,30 @@ class ResearchEngine:
             stop_reason=str(loop_record.get("stop_reason") or ""),
             feedback_action_count=len(loop_record.get("feedback_actions") or []),
             pdf_report_path=pdf_report_path,
-            pdf_report_status=str(pdf_status.get("status") or "failed"),
+            pdf_report_status=str(pdf_status.get("status") or "not_requested"),
+            report_mode=report_mode,
             warnings=warnings,
         )
 
 
 def run_research(topic: str, **kwargs: Any) -> ResearchRunResult:
     return ResearchEngine(**kwargs.pop("engine_kwargs", {})).run(topic, **kwargs)
+
+
+def not_requested_pdf_status() -> dict[str, Any]:
+    """Return the compatibility status used when document output was not requested."""
+
+    return {
+        "schema_version": "pdf_report_status.v1",
+        "status": "not_requested",
+        "path": "",
+        "generated_at": utc_now(),
+        "page_count": 0,
+        "byte_count": 0,
+        "font_mode": "",
+        "error_type": "",
+        "error_message": "",
+    }
 
 
 def reserve_run_dir(output_dir: Path, requested_run_id: str) -> tuple[str, Path]:

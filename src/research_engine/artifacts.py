@@ -9,6 +9,9 @@ import re
 from typing import Any
 
 
+SUMMARY_EVIDENCE_LIMIT = 10
+
+
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.lower()).strip("-")
     return slug[:64] or "research-run"
@@ -36,6 +39,140 @@ def append_jsonl(path: Path, payload: dict[str, Any]) -> None:
             raise OSError(f"short append to {path}")
     finally:
         os.close(descriptor)
+
+
+def build_research_summary(
+    *,
+    run_id: str,
+    topic: str,
+    pack: dict[str, Any],
+    profile: str,
+    status: str,
+    as_of: str,
+    decision_brief: dict[str, Any],
+    claim_review: dict[str, Any],
+    quality_report: dict[str, Any],
+    loop_record: dict[str, Any],
+    rows: list[dict[str, Any]],
+    facet_coverage: dict[str, Any] | None = None,
+    evidence_limit: int = SUMMARY_EVIDENCE_LIMIT,
+) -> dict[str, Any]:
+    """Build the bounded machine-facing conclusion for a research run.
+
+    This function intentionally consumes existing synthesis and quality artifacts.  It does
+    not collect evidence, call a model, or duplicate the research work performed by the run.
+    """
+
+    overall = claim_review.get("overall") or {}
+    quality = quality_report or {}
+    coverage = facet_coverage or quality.get("facet_coverage") or {}
+    loop = loop_record or {}
+    quality_warnings = _dedupe_strings(
+        [
+            *(quality.get("warnings") or []),
+            *(overall.get("risk_flags") or []),
+        ]
+    )
+    scope_warnings = _scope_coverage_warnings(coverage)
+    return {
+        "schema_version": "research_summary.v1",
+        "run_id": run_id,
+        "topic": topic,
+        "pack": dict(pack),
+        "profile": profile,
+        "status": status,
+        "as_of": as_of,
+        "headline": str(
+            decision_brief.get("headline")
+            or overall.get("summary")
+            or "No summary available."
+        ),
+        "stance": str(decision_brief.get("stance") or overall.get("stance") or "unknown"),
+        "confidence": str(
+            decision_brief.get("confidence") or overall.get("confidence") or "unknown"
+        ),
+        "action_bias": str(decision_brief.get("action_bias") or "unknown"),
+        "rationale": [
+            str(item)
+            for item in (decision_brief.get("rationale") or [])
+            if str(item).strip()
+        ][:5],
+        "quality_warnings": quality_warnings,
+        "scope_warnings": scope_warnings,
+        "key_evidence": _key_evidence_references(
+            rows,
+            quality_report=quality,
+            limit=evidence_limit,
+        ),
+        "loop_status": str(loop.get("loop_status") or "unknown"),
+        "stop_reason": str(loop.get("stop_reason") or "unknown"),
+    }
+
+
+def _key_evidence_references(
+    rows: list[dict[str, Any]], *, quality_report: dict[str, Any], limit: int
+) -> list[dict[str, str]]:
+    """Select a stable, bounded set of citation-ready evidence references."""
+
+    rows_by_id = {
+        str(row.get("evidence_id") or ""): row
+        for row in rows
+        if str(row.get("evidence_id") or "")
+    }
+    preview_ids = [
+        str(value)
+        for value in quality_report.get("relevance_preview_evidence_ids") or []
+        if str(value)
+    ]
+    ordered_rows = [rows_by_id[evidence_id] for evidence_id in preview_ids if evidence_id in rows_by_id]
+    seen_ids = {str(row.get("evidence_id") or "") for row in ordered_rows}
+    remaining_rows = sorted(
+        (
+            row
+            for row in rows
+            if str(row.get("evidence_id") or "")
+            and str(row.get("evidence_id") or "") not in seen_ids
+            and not row.get("is_duplicate")
+        ),
+        key=lambda row: (
+            -float(row.get("relevance_score") or 0.0),
+            -float(row.get("quality_score") or 0.0),
+            str(row.get("evidence_id") or ""),
+        ),
+    )
+    ordered_rows.extend(remaining_rows)
+    bounded_limit = max(0, int(limit))
+    references: list[dict[str, str]] = []
+    for row in ordered_rows:
+        evidence_id = str(row.get("evidence_id") or "")
+        if not evidence_id:
+            continue
+        references.append(
+            {
+                "evidence_id": evidence_id,
+                "title": str(row.get("title") or row.get("url") or row.get("source_url") or "Untitled"),
+                "url": str(row.get("url") or row.get("source_url") or row.get("final_url") or ""),
+                "quality_tier": str(row.get("quality_tier") or "unknown"),
+            }
+        )
+        if len(references) >= bounded_limit:
+            break
+    return references
+
+
+def _scope_coverage_warnings(coverage: dict[str, Any]) -> list[str]:
+    missing = [str(value) for value in coverage.get("missing_required_facets") or [] if str(value)]
+    omitted = [str(value) for value in coverage.get("omitted_required_facets") or [] if str(value)]
+    warnings: list[str] = []
+    if missing:
+        warnings.append("Missing required facets: " + ", ".join(missing))
+    if omitted:
+        warnings.append("Required facets omitted by budget: " + ", ".join(omitted))
+    return warnings
+
+
+def _dedupe_strings(values: list[Any]) -> list[str]:
+    return list(dict.fromkeys(str(value) for value in values if str(value).strip()))
 
 
 def render_report(
