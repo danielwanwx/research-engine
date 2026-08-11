@@ -19,23 +19,32 @@ Use Research Engine before ad hoc browsing when the task needs evidence
 collection, source coverage, citations, contradiction checks, or reusable
 research artifacts.
 
-1. Locate the Research Engine checkout or installed package.
-2. For normal terminal use, run the interactive entry:
+1. Treat `/Users/danielwan/Project/research-engine` as the canonical checkout.
+   Run the module from that checkout so the skill always uses the current source
+   tree, including uncommitted fixes. Do not invoke the globally installed
+   `research-engine` or `research` entry points; they may resolve to an older
+   installed package.
+2. Use this command for normal agent-driven research:
 
 ```bash
-research
-research "调研 <topic>"
+cd /Users/danielwan/Project/research-engine
+PYTHONPATH=src /opt/homebrew/opt/python@3.10/bin/python3.10 -m research_engine.cli \
+  run "<topic>" --pack auto --depth deep --output runs
 ```
 
-3. Let the wizard ask for any missing terminal-only details, optional JSONL
-   evidence exports, and final read-only confirmation.
-4. For automation, tests, or explicit advanced requests, use:
+3. Add advanced flags such as `--scope-file`, `--external-evidence`,
+   `--browser-auth`, or an explicit `--pack` only when the request requires
+   them. Keep `--pack auto` for ordinary company, role, business, and market
+   research; do not force `interview_prep` without explicit interview intent.
+4. Before a run, verify the module path when there is any doubt:
 
 ```bash
-research-engine run "<topic>" --pack auto --output runs
+PYTHONPATH=src /opt/homebrew/opt/python@3.10/bin/python3.10 -c \
+  'import research_engine; print(research_engine.__file__)'
 ```
 
-5. Read `run_manifest.json`, `evidence.jsonl`, `evidence_quality.json`,
+   It must resolve under `/Users/danielwan/Project/research-engine/src`.
+5. Read `run_manifest.json`, `query_plan.json`, `evidence.jsonl`, `evidence_quality.json`,
    `loop_contract.json`, and `loop_record.json` before summarizing results to
    the user.
 

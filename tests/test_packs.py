@@ -98,6 +98,31 @@ def test_profile_packs_route_only_on_explicit_domain_intent():
     )
 
 
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "job descriptions",
+        "OpenAI company business model",
+        "AI market research",
+    ],
+)
+def test_auto_pack_does_not_treat_general_business_or_role_research_as_interview_prep(
+    topic,
+):
+    assert select_research_pack(topic)["id"] == "generic"
+
+
+def test_auto_pack_scoring_is_not_pack_file_first_match_precedence():
+    assert select_research_pack("AI hiring market interview trends")["id"] == "job_market"
+
+
+def test_interview_pack_manifest_profile_is_a_supported_planning_profile():
+    pack = select_research_pack("Anthropic interview process")
+
+    assert pack["id"] == "interview_prep"
+    assert pack_summary(pack)["profile"] == "generic"
+
+
 def test_job_market_enables_linkedin_only_for_deep_and_audit_runs():
     pack = select_research_pack("US software engineer employment market")
 

@@ -952,7 +952,7 @@ def test_runner_marks_empty_connector_results_as_failed_no_rows(tmp_path):
         connectors={"manual": EmptyManualConnector},
     )
 
-    result = engine.run("empty connector result", run_date="2026-06-27", slug="empty")
+    result = engine.run("job descriptions", run_date="2026-06-27", slug="empty")
 
     run_dir = tmp_path / "runs/2026-06-27-empty"
     manifest = json.loads((run_dir / "run_manifest.json").read_text())
@@ -962,6 +962,8 @@ def test_runner_marks_empty_connector_results_as_failed_no_rows(tmp_path):
     assert result.loop_status == "blocked"
     assert result.stop_reason == "sources_returned_no_evidence"
     assert manifest["status"] == "failed_no_rows"
+    assert manifest["pack"]["id"] == "generic"
+    assert manifest["profile"] == "generic"
     assert loop_record["loop_status"] == "blocked"
     assert loop_record["stop_reason"] == "sources_returned_no_evidence"
 
@@ -1019,6 +1021,36 @@ def test_cli_run_subcommand_accepts_pack_auto(tmp_path, capsys):
     assert payload["loop_status"] == "planned"
     assert payload["stop_reason"] == "planned_before_collection"
     assert (tmp_path / payload["run_id"] / "query_plan.json").exists()
+
+
+def test_cli_auto_pack_keeps_generic_job_description_research_out_of_interview_prep(
+    tmp_path, capsys
+):
+    exit_code = main(
+        [
+            "run",
+            "job descriptions",
+            "--pack",
+            "auto",
+            "--dry-run",
+            "--output",
+            str(tmp_path),
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    run_dir = tmp_path / payload["run_id"]
+    manifest = json.loads((run_dir / "run_manifest.json").read_text())
+    query_plan = json.loads((run_dir / "query_plan.json").read_text())
+
+    assert exit_code == 0
+    assert payload["pack_id"] == "generic"
+    assert manifest["pack"]["id"] == "generic"
+    assert query_plan["profile"] == "generic"
+    assert all("interview" not in query["query"].lower() for query in query_plan["queries"])
+    assert all(
+        source.get("source_id") != "github_interview_repos"
+        for source in query_plan["sources"]
+    )
 
 
 def test_runner_preserves_artifacts_when_connector_crashes(tmp_path):

@@ -1,21 +1,18 @@
 {
   "id": "interview_prep",
   "label": "Interview preparation target research",
-  "profile": "interview_prep",
+  "profile": "generic",
   "intent": "interview_target_research",
   "match_terms": [
     "interview",
     "interview loop",
     "interview process",
-    "hiring",
     "hiring bar",
     "recruiter",
     "onsite",
     "coding interview",
     "system design interview",
-    "behavioral interview",
-    "job description",
-    "role expectations"
+    "behavioral interview"
   ],
   "query_templates": [
     {"tier": "public_connector", "template": "{topic} interview"},

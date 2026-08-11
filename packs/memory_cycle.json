@@ -1,7 +1,7 @@
 {
   "id": "memory_cycle",
   "label": "Memory cycle market research",
-  "profile": "memory_cycle",
+  "profile": "generic",
   "intent": "financial_market_research",
   "match_terms": [
     "dram",
