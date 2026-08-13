@@ -1457,6 +1457,28 @@ def build_repair_failures(
         if not records or all(
             str(record.get("status") or "") in failed_statuses for record in records
         ):
+            infrastructure_reasons = sorted(
+                {
+                    str(record.get("failure_reason") or "")
+                    for record in records
+                    if str(record.get("failure_reason") or "")
+                    in {
+                        "dns_resolution_failed",
+                        "network_timeout",
+                        "network_unavailable",
+                        "tls_failure",
+                    }
+                }
+            )
+            if infrastructure_reasons:
+                failures.append(
+                    {
+                        "facet_id": facet_id,
+                        "reason": "infrastructure_unavailable",
+                        "failure_reasons": infrastructure_reasons,
+                    }
+                )
+                continue
             failures.append({"facet_id": facet_id, "reason": "no_executable_sources"})
             continue
         facet_rows = [row for row in rows if str(row.get("facet_id") or "") == facet_id]

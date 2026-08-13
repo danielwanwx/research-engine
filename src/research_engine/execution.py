@@ -15,6 +15,7 @@ from typing import Any, Callable
 from urllib.parse import urlsplit
 
 from research_engine.models import CollectionRequest, CollectionResult, utc_now
+from research_engine.network_errors import transient_network_reason
 
 
 ConnectorProvider = Any | Callable[[], Any]
@@ -233,6 +234,7 @@ def execute_one_request(
                         deadline_exhausted=True,
                         host_wait_seconds=host_wait_seconds,
                         clock_fn=options.monotonic_fn,
+                        failure_reason=transient_network_reason(exc),
                     )
                 if delay:
                     options.sleep_fn(delay)
@@ -255,6 +257,7 @@ def execute_one_request(
                 deadline_exhausted=deadline_exhausted,
                 host_wait_seconds=host_wait_seconds,
                 clock_fn=options.monotonic_fn,
+                failure_reason=transient_network_reason(exc),
             )
         for row in result.rows:
             row.setdefault("source_id", request.source_id)
@@ -347,6 +350,7 @@ def build_record(
     deadline_exhausted: bool = False,
     host_wait_seconds: float = 0.0,
     provider_metadata: dict[str, Any] | None = None,
+    failure_reason: str = "",
     clock_fn: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
     record = {
@@ -367,6 +371,8 @@ def build_record(
         "host_wait_seconds": round(host_wait_seconds, 3),
         "elapsed_ms": int((clock_fn() - started) * 1000),
     }
+    if failure_reason:
+        record["failure_reason"] = failure_reason
     safe_metadata = _safe_provider_metadata(provider_metadata or {})
     if safe_metadata:
         record["provider_metadata"] = safe_metadata
@@ -433,7 +439,9 @@ def failure_warning(
     status: str,
 ) -> str:
     label = "rate limited" if status == "rate_limit" else "crashed"
-    return f"{connector_id} connector {label} for {source_id}: {type(exc).__name__}"
+    reason = transient_network_reason(exc)
+    suffix = f" ({reason})" if reason else ""
+    return f"{connector_id} connector {label} for {source_id}: {type(exc).__name__}{suffix}"
 
 
 def request_host(request: CollectionRequest) -> str:

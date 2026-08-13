@@ -350,6 +350,7 @@ def build_loop_record(
         status=status,
         check_results=check_results,
         warnings=warnings,
+        repair_record=repair_record or {},
     )
     loop_status = summarize_loop_status(status=status, check_results=check_results)
     return {
@@ -358,7 +359,12 @@ def build_loop_record(
         "topic": topic,
         "run_status": status,
         "loop_status": loop_status,
-        "stop_reason": stop_reason(status=status, dry_run=dry_run, check_results=check_results),
+        "stop_reason": stop_reason(
+            status=status,
+            dry_run=dry_run,
+            check_results=check_results,
+            repair_record=repair_record or {},
+        ),
         "check_results": check_results,
         "feedback_actions": feedback_actions,
         "records_written": {
@@ -724,6 +730,7 @@ def build_feedback_actions(
     status: str,
     check_results: list[dict[str, Any]],
     warnings: list[str],
+    repair_record: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     actions: list[dict[str, str]] = []
     if status == "failed_no_sources":
@@ -734,12 +741,20 @@ def build_feedback_actions(
             }
         )
     if status == "failed_no_rows":
-        actions.append(
-            {
-                "reason": "failed_no_rows",
-                "action": "Broaden --platform-scope, simplify the query, or repair missing/auth-expired connectors.",
-            }
-        )
+        if (repair_record or {}).get("stop_reason") == "infrastructure_unavailable":
+            actions.append(
+                {
+                    "reason": "infrastructure_unavailable",
+                    "action": "Restore DNS/network access, then retry the run; changing the query will not help.",
+                }
+            )
+        else:
+            actions.append(
+                {
+                    "reason": "failed_no_rows",
+                    "action": "Broaden --platform-scope, simplify the query, or repair missing/auth-expired connectors.",
+                }
+            )
     for result in check_results:
         result_status = result.get("status")
         if result_status not in {"warn", "fail"}:
@@ -779,7 +794,13 @@ def summarize_loop_status(*, status: str, check_results: list[dict[str, Any]]) -
     return "complete"
 
 
-def stop_reason(*, status: str, dry_run: bool, check_results: list[dict[str, Any]]) -> str:
+def stop_reason(
+    *,
+    status: str,
+    dry_run: bool,
+    check_results: list[dict[str, Any]],
+    repair_record: dict[str, Any] | None = None,
+) -> str:
     if dry_run or status == "planned":
         return "planned_before_collection"
     if any(
@@ -790,6 +811,8 @@ def stop_reason(*, status: str, dry_run: bool, check_results: list[dict[str, Any
     if status == "failed_no_sources":
         return "no_executable_sources"
     if status == "failed_no_rows":
+        if (repair_record or {}).get("stop_reason") == "infrastructure_unavailable":
+            return "infrastructure_unavailable"
         return "sources_returned_no_evidence"
     failed = [result for result in check_results if result.get("status") == "fail"]
     if failed:

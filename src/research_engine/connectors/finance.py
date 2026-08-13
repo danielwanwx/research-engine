@@ -6,6 +6,7 @@ import json
 from urllib.request import Request, urlopen
 
 from research_engine.models import CollectionRequest, CollectionResult, utc_now
+from research_engine.network_errors import TransientNetworkError, transient_network_reason
 
 
 class FinanceQuoteConnector:
@@ -14,6 +15,7 @@ class FinanceQuoteConnector:
     def collect(self, request: CollectionRequest) -> CollectionResult:
         rows: list[dict] = []
         warnings: list[str] = []
+        transient_failures: list[str] = []
         for ticker in (request.source.get("tickers") or [])[: request.max_results]:
             if not isinstance(ticker, dict):
                 continue
@@ -23,7 +25,12 @@ class FinanceQuoteConnector:
             try:
                 quote = fetch_quote(symbol)
             except Exception as exc:
-                warnings.append(f"finance_quote failed for {symbol}: {exc}")
+                reason = transient_network_reason(exc)
+                if reason:
+                    transient_failures.append(reason)
+                    warnings.append(f"finance_quote failed for {symbol}: {reason}")
+                else:
+                    warnings.append(f"finance_quote failed for {symbol}: {type(exc).__name__}")
                 continue
             meta = quote["chart"]["result"][0]["meta"]
             price = meta.get("regularMarketPrice")
@@ -46,6 +53,8 @@ class FinanceQuoteConnector:
                     "source_confidence": "medium",
                 }
             )
+        if not rows and transient_failures:
+            raise TransientNetworkError(transient_failures[0])
         return CollectionResult(
             source_id=request.source_id,
             connector=self.connector_id,

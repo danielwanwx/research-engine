@@ -186,6 +186,21 @@ def test_pending_authenticated_browser_gate_has_explicit_stop_reason():
     assert record["stop_reason"] == "human_action_required"
 
 
+def test_network_outage_has_explicit_stop_reason_and_recovery_action():
+    kwargs = base_loop_kwargs(status="failed_no_rows", rows=[])
+    kwargs["repair_record"] = {"stop_reason": "infrastructure_unavailable"}
+
+    record = build_loop_record(**kwargs)
+
+    assert record["loop_status"] == "blocked"
+    assert record["stop_reason"] == "infrastructure_unavailable"
+    assert any(
+        action["reason"] == "infrastructure_unavailable"
+        and "Restore DNS/network access" in action["action"]
+        for action in record["feedback_actions"]
+    )
+
+
 def test_advisory_authenticated_source_gap_requires_review_without_blocking():
     kwargs = base_loop_kwargs()
     kwargs["query_plan"] = {

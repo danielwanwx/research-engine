@@ -9,6 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from research_engine.models import CollectionRequest, CollectionResult, utc_now
+from research_engine.network_errors import raise_if_transient_network_error
 from research_engine.security import sanitize_for_artifact
 
 
@@ -84,6 +85,7 @@ class WebSearchConnector:
                 warnings=[f"web_search {provider} API error{exc.safe_suffix}"],
             )
         except Exception as exc:
+            raise_if_transient_network_error(exc)
             return self._result(
                 request,
                 provider=provider,

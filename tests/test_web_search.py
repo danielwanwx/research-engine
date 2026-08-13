@@ -1,5 +1,6 @@
 import json
-from urllib.error import HTTPError
+import socket
+from urllib.error import HTTPError, URLError
 
 from research_engine.connectors.web_search import WebSearchConnector
 from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
@@ -128,6 +129,35 @@ def test_web_search_rate_limit_matches_execution_status_contract():
     )
 
     assert report["requests"][0]["status"] == "rate_limit"
+
+
+def test_anysearch_dns_failure_uses_execution_retry_and_safe_classification():
+    calls = []
+
+    def unavailable(_request, _timeout):
+        calls.append("attempt")
+        raise URLError(socket.gaierror(8, "host lookup included private detail"))
+
+    _, warnings, report = execute_collection_requests(
+        [request()],
+        connector_providers={"web_search": WebSearchConnector(transport=unavailable)},
+        options=ConnectorExecutionOptions(
+            retries=1,
+            sleep_fn=lambda _delay: None,
+            host_delay_seconds=0,
+        ),
+    )
+
+    record = report["requests"][0]
+    assert calls == ["attempt", "attempt"]
+    assert record["attempts"] == 2
+    assert record["status"] == "retry_exhausted"
+    assert record["failure_reason"] == "dns_resolution_failed"
+    assert warnings == [
+        "web_search connector crashed for search-q-0001: "
+        "TransientNetworkError (dns_resolution_failed)"
+    ]
+    assert "private detail" not in str(record)
 
 
 def test_searxng_requires_an_explicit_endpoint():

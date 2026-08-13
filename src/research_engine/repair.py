@@ -74,6 +74,11 @@ def build_repair_plan(
         and previous_progress_fingerprint == current_progress_fingerprint
     ):
         return _stopped("repair_no_progress", current_progress_fingerprint)
+    if failures and all(
+        str(failure.get("reason") or "") == "infrastructure_unavailable"
+        for failure in failures
+    ):
+        return _stopped("infrastructure_unavailable", current_progress_fingerprint)
 
     by_id = {str(facet.get("facet_id") or ""): facet for facet in facets}
     failures_by_facet: dict[str, list[dict[str, Any]]] = {}

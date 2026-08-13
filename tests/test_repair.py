@@ -206,6 +206,44 @@ def test_unavailable_search_does_not_emit_an_unchanged_repair():
     assert stopped["stop_reason"] == "repair_unavailable"
 
 
+def test_infrastructure_failure_is_classified_and_does_not_repeat_same_provider():
+    failures = build_repair_failures(
+        query_plan={
+            "queries": [
+                {
+                    "query_id": "q-0001",
+                    "facet_id": "overview",
+                    "required": True,
+                }
+            ]
+        },
+        rows=[],
+        execution_report={
+            "requests": [
+                {
+                    "query_id": "q-0001",
+                    "facet_id": "overview",
+                    "pass_id": "pass-1",
+                    "status": "retry_exhausted",
+                    "failure_reason": "dns_resolution_failed",
+                }
+            ]
+        },
+        quality_report={"facet_coverage": {"facets": []}},
+    )
+
+    assert failures == [
+        {
+            "facet_id": "overview",
+            "reason": "infrastructure_unavailable",
+            "failure_reasons": ["dns_resolution_failed"],
+        }
+    ]
+    stopped = build_repair_plan(FACETS, failures, as_of="2026-08-13")
+    assert stopped["should_repair"] is False
+    assert stopped["stop_reason"] == "infrastructure_unavailable"
+
+
 def test_failed_canonical_lineage_repairs_next_candidate_with_direct_web_fetch():
     query = {
         "facet_id": "overview",

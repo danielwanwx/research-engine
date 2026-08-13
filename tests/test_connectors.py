@@ -1,31 +1,35 @@
 import json
+import socket
+from urllib.error import URLError
+
+import pytest
 
 from research_engine.connectors.external import ExternalJsonlConnector
 from research_engine.connectors.finance import FinanceQuoteConnector
 from research_engine.connectors.web import FetchedPage, WebPageConnector
+from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
 from research_engine.models import CollectionRequest
+from research_engine.network_errors import TransientNetworkError
 
 
-def test_web_connector_turns_timeout_into_warning(monkeypatch):
+def test_web_connector_surfaces_timeout_for_execution_retry(monkeypatch):
     def timeout_fetch(url, **_kwargs):
         raise TimeoutError("simulated timeout")
 
     monkeypatch.setattr("research_engine.connectors.web.fetch_page_result", timeout_fetch)
-    result = WebPageConnector().collect(
-        CollectionRequest(
-            source={
-                "source_id": "web_seed_pages",
-                "pages": [{"url": "https://example.com/slow", "title": "Slow page"}],
-            },
-            topic="slow page research",
-            run_date="2026-06-21",
-            depth="quick",
-            max_results=3,
+    with pytest.raises(TransientNetworkError, match="network_timeout"):
+        WebPageConnector().collect(
+            CollectionRequest(
+                source={
+                    "source_id": "web_seed_pages",
+                    "pages": [{"url": "https://example.com/slow", "title": "Slow page"}],
+                },
+                topic="slow page research",
+                run_date="2026-06-21",
+                depth="quick",
+                max_results=3,
+            )
         )
-    )
-
-    assert result.rows == []
-    assert "simulated timeout" in result.warnings[0]
 
 
 def test_web_connector_surfaces_robots_denied_status():
@@ -89,26 +93,66 @@ def test_web_connector_keeps_invalid_row_with_transport_metadata(monkeypatch):
     assert "unsupported_content_type_application/pdf" in result.warnings[0]
 
 
-def test_finance_connector_turns_timeout_into_warning(monkeypatch):
+def test_finance_connector_retries_when_all_quotes_hit_transient_network_failure(monkeypatch):
+    calls = []
+
     def timeout_quote(symbol):
+        calls.append(symbol)
         raise TimeoutError("simulated quote timeout")
 
     monkeypatch.setattr("research_engine.connectors.finance.fetch_quote", timeout_quote)
-    result = FinanceQuoteConnector().collect(
-        CollectionRequest(
-            source={
-                "source_id": "finance_quote_watchlist",
-                "tickers": [{"symbol": "MU", "name": "Micron Technology"}],
-            },
-            topic="quote research",
-            run_date="2026-06-21",
-            depth="quick",
-            max_results=3,
-        )
+    request = CollectionRequest(
+        source={
+            "source_id": "finance_quote_watchlist",
+            "connector": "finance_quote",
+            "tickers": [{"symbol": "MU", "name": "Micron Technology"}],
+        },
+        topic="quote research",
+        run_date="2026-06-21",
+        depth="quick",
+        max_results=3,
+    )
+    _, _, report = execute_collection_requests(
+        [request],
+        connector_providers={"finance_quote": FinanceQuoteConnector()},
+        options=ConnectorExecutionOptions(
+            retries=1, sleep_fn=lambda _delay: None, host_delay_seconds=0
+        ),
     )
 
-    assert result.rows == []
-    assert "simulated quote timeout" in result.warnings[0]
+    assert calls == ["MU", "MU"]
+    assert report["requests"][0]["failure_reason"] == "network_timeout"
+
+
+def test_web_page_dns_failure_uses_execution_retry(monkeypatch):
+    calls = []
+
+    def dns_failure(url, **_kwargs):
+        calls.append(url)
+        raise URLError(socket.gaierror(8, "private resolver detail"))
+
+    monkeypatch.setattr("research_engine.connectors.web.fetch_page_result", dns_failure)
+    request = CollectionRequest(
+        source={
+            "source_id": "web_seed_pages",
+            "connector": "web_page",
+            "pages": [{"url": "https://example.com/page", "title": "Page"}],
+        },
+        topic="page research",
+        run_date="2026-08-13",
+        depth="quick",
+        max_results=1,
+    )
+    _, _, report = execute_collection_requests(
+        [request],
+        connector_providers={"web_page": WebPageConnector()},
+        options=ConnectorExecutionOptions(
+            retries=1, sleep_fn=lambda _delay: None, host_delay_seconds=0
+        ),
+    )
+
+    assert calls == ["https://example.com/page", "https://example.com/page"]
+    assert report["requests"][0]["failure_reason"] == "dns_resolution_failed"
 
 
 def test_external_jsonl_connector_imports_logged_in_rows(tmp_path):

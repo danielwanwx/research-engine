@@ -14,6 +14,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from urllib.robotparser import RobotFileParser
 
 from research_engine.models import CollectionRequest, CollectionResult, utc_now
+from research_engine.network_errors import raise_if_transient_network_error
 from research_engine.extraction import extract_content
 from research_engine.freshness import extract_temporal_metadata
 from research_engine.quality import evidence_invalid_reasons
@@ -243,6 +244,7 @@ class WebPageConnector:
                     else fetch_page_result(url, robots_policy=self.robots_policy)
                 )
             except Exception as exc:
+                raise_if_transient_network_error(exc)
                 warnings.append(
                     f"web_page failed for {safe_url_for_warning(url)}: {type(exc).__name__}: {exc}"
                 )
