@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install core and development dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev,report]"
+      - name: Ruff
+        run: python -m ruff check src tests examples
+      - name: Tests
+        run: python -m pytest -q
+
+  core-only-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install core and development dependencies without report extra
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Verify core-only summary and optional-report contract
+        run: >-
+          python -m pytest -q
+          tests/test_packaging.py::test_core_metadata_keeps_report_renderer_optional
+          tests/test_report_mode.py::test_summary_mode_does_not_import_reportlab
+          tests/test_report_mode.py::test_full_mode_missing_report_extra_has_actionable_error
+          tests/test_report_mode.py::test_cli_full_mode_missing_report_extra_is_concise
+          tests/test_artifact_contract.py

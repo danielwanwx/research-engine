@@ -1,7 +1,7 @@
 # Agent-First Repository Convergence Design
 
 **Date:** 2026-08-15  
-**Status:** Approved for planning  
+**Status:** Approved and implemented
 **Scope:** `research-engine` only; LoopCoach is explicitly out of scope.
 
 ## Objective
@@ -106,4 +106,3 @@ The implementation is complete only when:
 ## Delivery Strategy
 
 Implement in reviewable stages: first repository and documentation consolidation, then optional dependency packaging, then runner boundary extraction, followed by Skill synchronization and complete verification. Deletions happen only after referenced fixtures and current contracts have been migrated. The final change is committed and pushed to the repository's existing branch after review.
-

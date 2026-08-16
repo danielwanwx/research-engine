@@ -69,17 +69,19 @@ def test_generic_pack_uses_the_approved_five_facet_contract():
     ]
 
 
-def test_project_packs_match_packaged_defaults():
-    project_root = Path(__file__).resolve().parents[1]
-    project_pack_dir = project_root / "packs"
-    package_pack_dir = project_root / "src/research_engine/default_packs"
+def test_packaged_defaults_are_authoritative():
+    package_pack_dir = Path(__file__).resolve().parents[1] / "src/research_engine/default_packs"
+    pack_ids = {path.stem for path in package_pack_dir.glob("*.json")}
 
-    for project_pack in project_pack_dir.glob("*.json"):
-        packaged_pack = package_pack_dir / project_pack.name
-        assert packaged_pack.exists(), f"missing packaged default pack: {project_pack.name}"
-        assert json.loads(project_pack.read_text(encoding="utf-8")) == json.loads(
-            packaged_pack.read_text(encoding="utf-8")
-        )
+    assert pack_ids >= {
+        "generic",
+        "interview_prep",
+        "job_market",
+        "market_landscape",
+        "memory_cycle",
+        "technical",
+    }
+    assert all(isinstance(json.loads(path.read_text(encoding="utf-8")), dict) for path in package_pack_dir.glob("*.json"))
 
 
 def test_profile_packs_route_only_on_explicit_domain_intent():

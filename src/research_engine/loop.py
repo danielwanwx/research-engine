@@ -259,6 +259,7 @@ def build_loop_contract(
         ],
         "records": [
             "run_manifest.json",
+            "research_summary.json",
             "query_plan.json",
             "collection_execution.json",
             "evidence.jsonl",
@@ -271,9 +272,9 @@ def build_loop_contract(
             "decision_brief.json",
             "loop_contract.json",
             "loop_record.json",
-            "research_report.md",
-            "research_report.pdf",
-            "pdf_report_status.json",
+            "research_report.md (full mode only)",
+            "research_report.pdf (full mode only)",
+            "pdf_report_status.json (full mode only)",
         ],
         "stop_conditions": {
             "success": [

@@ -8,13 +8,14 @@ import re
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
-from research_engine.artifacts import (
-    build_research_summary,
-    render_report,
-    slugify,
-    write_json,
-    write_jsonl,
+from research_engine.artifacts import build_research_summary, slugify, write_json
+from research_engine.artifact_transaction import (
+    not_requested_pdf_status as _not_requested_pdf_status,
+    reserve_run_dir,
+    write_core_artifacts,
+    write_summary_and_report,
 )
+from research_engine.collection_pipeline import CollectionPipeline
 from research_engine.conflicts import build_independence_key
 from research_engine.connectors import (
     AgentReachBridgeConnector,
@@ -31,12 +32,11 @@ from research_engine.connectors import (
     XaiDiscoveryConnector,
 )
 from research_engine.browser_recipes import recipe_for_platform, recipe_for_url
-from research_engine.execution import ConnectorExecutionOptions, execute_collection_requests
-from research_engine.extraction import build_chunks
-from research_engine.freshness import enrich_row_freshness
+from research_engine.execution import ConnectorExecutionOptions
 from research_engine.job_market import build_job_market_snapshot
 from research_engine.loop import build_loop_contract, build_loop_record
 from research_engine.models import CollectionRequest, CollectionResult, ResearchRunResult, utc_now
+from research_engine.optional_dependencies import require_report_dependency
 from research_engine.packs import pack_summary, select_research_pack
 from research_engine.pdf_report import render_pdf_report
 from research_engine.planning import build_query_plan, collection_requests_from_plan
@@ -47,8 +47,6 @@ from research_engine.security import (
     artifact_path_ref,
     redact_text,
     sanitize_for_artifact,
-    sensitive_paths,
-    sensitive_value_paths,
 )
 from research_engine.synthesis import (
     assign_claim_polarities,
@@ -65,6 +63,17 @@ from research_engine.targets import (
     build_target_claim_review,
     classify_target_evidence,
 )
+
+from research_engine.evaluation_pipeline import (
+    build_analysis_rows,
+    build_evidence_chunks,
+    enrich_rows_with_freshness,
+    normalize_rows,
+    run_status,
+    sanitize_rows_for_artifacts,
+)
+
+not_requested_pdf_status = _not_requested_pdf_status
 ConnectorProvider = Any | Callable[[], Any]
 
 DEFAULT_CONNECTORS: dict[str, ConnectorProvider] = {
@@ -114,6 +123,10 @@ class ResearchEngine:
             host_max_concurrency=host_max_concurrency,
             host_delay_seconds=host_delay_seconds,
         )
+        self.collection_pipeline = CollectionPipeline(
+            connector_providers=self.connector_factories,
+            options=self.execution_options,
+        )
 
     def run(
         self,
@@ -148,6 +161,8 @@ class ResearchEngine:
         if report_mode not in REPORT_MODES:
             supported = ", ".join(sorted(REPORT_MODES))
             raise ValueError(f"unsupported report_mode: {report_mode}; supported: {supported}")
+        if report_mode == "full":
+            require_report_dependency()
         resolved_target = ResearchTarget.from_mapping(target) if target is not None else None
         selected_pack = select_research_pack(topic, pack_dir=self.pack_dir, pack_id=pack_id)
         resolved_date = run_date or date.today().isoformat()
@@ -366,10 +381,8 @@ class ResearchEngine:
                 )
                 for source in source_requests
             ]
-            collection_results, execution_warnings, execution_report = execute_collection_requests(
-                executable_requests,
-                connector_providers=self.connector_factories,
-                options=self.execution_options,
+            collection_results, execution_warnings, execution_report = (
+                self.collection_pipeline.execute(executable_requests)
             )
             warnings.extend(execution_warnings)
             if resolved_target:
@@ -390,15 +403,11 @@ class ResearchEngine:
                     )
                     if supplemental_requests:
                         supplemental_results, supplemental_warnings, supplemental_report = (
-                            execute_collection_requests(
-                                supplemental_requests,
-                                connector_providers=self.connector_factories,
-                                options=self.execution_options,
-                            )
+                            self.collection_pipeline.execute(supplemental_requests)
                         )
                         collection_results.extend(supplemental_results)
                         warnings.extend(supplemental_warnings)
-                        execution_report = merge_execution_reports(
+                        execution_report = self.collection_pipeline.merge_reports(
                             execution_report,
                             supplemental_report,
                         )
@@ -412,14 +421,14 @@ class ResearchEngine:
                     max_results=max_results,
                 )
                 if refetch_request:
-                    refetch_results, refetch_warnings, refetch_report = execute_collection_requests(
-                        [refetch_request],
-                        connector_providers=self.connector_factories,
-                        options=self.execution_options,
+                    refetch_results, refetch_warnings, refetch_report = (
+                        self.collection_pipeline.execute([refetch_request])
                     )
                     collection_results.extend(refetch_results)
                     warnings.extend(refetch_warnings)
-                    execution_report = merge_execution_reports(execution_report, refetch_report)
+                    execution_report = self.collection_pipeline.merge_reports(
+                        execution_report, refetch_report
+                    )
             elif not resolved_target:
                 canonical_request = build_canonical_refetch_request(
                     collection_results,
@@ -429,14 +438,14 @@ class ResearchEngine:
                     max_results=int((m2_plan.get("budget") or {}).get("max_canonical_refetches") or 0),
                 )
                 if canonical_request:
-                    refetch_results, refetch_warnings, refetch_report = execute_collection_requests(
-                        [canonical_request],
-                        connector_providers=self.connector_factories,
-                        options=self.execution_options,
+                    refetch_results, refetch_warnings, refetch_report = (
+                        self.collection_pipeline.execute([canonical_request])
                     )
                     collection_results.extend(refetch_results)
                     warnings.extend(refetch_warnings)
-                    execution_report = merge_execution_reports(execution_report, refetch_report)
+                    execution_report = self.collection_pipeline.merge_reports(
+                        execution_report, refetch_report
+                    )
             browser_requests = build_authenticated_browser_requests(
                 collection_results,
                 platform_plan=platform_plan,
@@ -449,14 +458,18 @@ class ResearchEngine:
             )
             if browser_requests:
                 source_requests.extend(browser_requests)
-                browser_results, browser_warnings, browser_report = execute_collection_requests(
-                    browser_requests,
+                browser_pipeline = CollectionPipeline(
                     connector_providers=self.connector_factories,
                     options=browser_execution_options(),
                 )
+                browser_results, browser_warnings, browser_report = browser_pipeline.execute(
+                    browser_requests
+                )
                 collection_results.extend(browser_results)
                 warnings.extend(browser_warnings)
-                execution_report = merge_execution_reports(execution_report, browser_report)
+                execution_report = self.collection_pipeline.merge_reports(
+                    execution_report, browser_report
+                )
                 auth_challenges = auth_challenges_from_results(browser_results)
             if not source_requests:
                 warnings.append(
@@ -507,15 +520,11 @@ class ResearchEngine:
                         run_date=resolved_date,
                     )
                     repair_results, repair_warnings, repair_execution = (
-                        execute_collection_requests(
-                            repair_requests,
-                            connector_providers=self.connector_factories,
-                            options=self.execution_options,
-                        )
+                        self.collection_pipeline.execute(repair_requests)
                     )
                     collection_results.extend(repair_results)
                     warnings.extend(repair_warnings)
-                    execution_report = merge_execution_reports(
+                    execution_report = self.collection_pipeline.merge_reports(
                         execution_report,
                         repair_execution,
                     )
@@ -530,15 +539,11 @@ class ResearchEngine:
                     )
                     if repair_refetch:
                         repaired_pages, refetch_warnings, refetch_execution = (
-                            execute_collection_requests(
-                                [repair_refetch],
-                                connector_providers=self.connector_factories,
-                                options=self.execution_options,
-                            )
+                            self.collection_pipeline.execute([repair_refetch])
                         )
                         collection_results.extend(repaired_pages)
                         warnings.extend(refetch_warnings)
-                        execution_report = merge_execution_reports(
+                        execution_report = self.collection_pipeline.merge_reports(
                             execution_report,
                             refetch_execution,
                         )
@@ -732,26 +737,24 @@ class ResearchEngine:
                 "feedback_action_count": len(loop_record.get("feedback_actions") or []),
             },
         }
-        write_json(run_dir / "run_manifest.json", manifest)
-        write_json(run_dir / "query_plan.json", query_plan)
-        write_json(run_dir / "collection_execution.json", execution_report)
-        write_json(run_dir / "cost_record.json", cost_record)
-        write_json(run_dir / "repair_record.json", repair_record)
-        write_jsonl(run_dir / "auth_challenges.jsonl", auth_challenges)
-        write_jsonl(run_dir / "evidence.jsonl", rows)
-        write_jsonl(run_dir / "chunks.jsonl", chunks)
-        write_json(run_dir / "evidence_quality.json", quality_report)
-        write_json(
-            run_dir / "facet_coverage.json",
-            dict(quality_report.get("facet_coverage") or {}),
+        write_core_artifacts(
+            run_dir,
+            manifest=manifest,
+            query_plan=query_plan,
+            execution_report=execution_report,
+            cost_record=cost_record,
+            repair_record=repair_record,
+            auth_challenges=auth_challenges,
+            rows=rows,
+            chunks=chunks,
+            quality_report=quality_report,
+            claim_review=claim_review,
+            job_market_snapshot=job_market_snapshot,
+            matrix=matrix,
+            decision_brief=decision_brief,
+            loop_contract=loop_contract,
+            loop_record=loop_record,
         )
-        write_json(run_dir / "claim_review.json", claim_review)
-        if job_market_snapshot is not None:
-            write_json(run_dir / "job_market_snapshot.json", job_market_snapshot)
-        write_json(run_dir / "supply_demand_matrix.json", matrix)
-        write_json(run_dir / "decision_brief.json", decision_brief)
-        write_json(run_dir / "loop_contract.json", loop_contract)
-        write_json(run_dir / "loop_record.json", loop_record)
         summary = build_research_summary(
             run_id=run_id,
             topic=topic,
@@ -766,45 +769,29 @@ class ResearchEngine:
             rows=rows,
             facet_coverage=dict(quality_report.get("facet_coverage") or {}),
         )
-        write_json(run_dir / "research_summary.json", summary)
-        if report_mode == "summary":
-            pdf_status = not_requested_pdf_status()
-            report_status = {
-                "status": "not_requested",
-                "markdown": {"status": "not_requested", "path": ""},
-                "pdf": pdf_status,
-            }
-        else:
-            (run_dir / "research_report.md").write_text(
-                render_report(
-                    topic=topic,
-                    pack_id=str(selected_pack.get("id")),
-                    raw_rows=rows,
-                    claim_review=claim_review,
-                    decision_brief=decision_brief,
-                    quality_report=quality_report,
-                    loop_record=loop_record,
-                    status=status,
-                    profile=str(query_plan.get("profile") or "generic"),
-                    as_of=resolved_as_of,
-                    facet_coverage=dict(quality_report.get("facet_coverage") or {}),
-                    job_market_snapshot=job_market_snapshot,
-                ),
-                encoding="utf-8",
+        pdf_status, report_status = write_summary_and_report(
+            run_dir,
+            summary=summary,
+            report_mode=report_mode,
+            topic=topic,
+            pack_id=str(selected_pack.get("id")),
+            raw_rows=rows,
+            claim_review=claim_review,
+            decision_brief=decision_brief,
+            quality_report=quality_report,
+            loop_record=loop_record,
+            status=status,
+            profile=str(query_plan.get("profile") or "generic"),
+            as_of=resolved_as_of,
+            facet_coverage=dict(quality_report.get("facet_coverage") or {}),
+            job_market_snapshot=job_market_snapshot,
+            pdf_renderer=render_pdf_report,
+        )
+        if pdf_status.get("status") != "generated" and report_mode == "full":
+            warnings.append(
+                "PDF report generation failed: "
+                f"{pdf_status.get('error_type') or 'unknown_error'}"
             )
-            pdf_status = render_pdf_report(run_dir)
-            pdf_status["error_message"] = redact_text(pdf_status.get("error_message") or "")
-            write_json(run_dir / "pdf_report_status.json", pdf_status)
-            report_status = {
-                "status": "generated" if pdf_status.get("status") == "generated" else "failed",
-                "markdown": {"status": "generated", "path": "research_report.md"},
-                "pdf": pdf_status,
-            }
-            if pdf_status.get("status") != "generated":
-                warnings.append(
-                    "PDF report generation failed: "
-                    f"{pdf_status.get('error_type') or 'unknown_error'}"
-                )
         manifest["warnings"] = warnings
         manifest["report_mode"] = report_mode
         manifest["report"] = report_status
@@ -836,38 +823,6 @@ class ResearchEngine:
 
 def run_research(topic: str, **kwargs: Any) -> ResearchRunResult:
     return ResearchEngine(**kwargs.pop("engine_kwargs", {})).run(topic, **kwargs)
-
-
-def not_requested_pdf_status() -> dict[str, Any]:
-    """Return the compatibility status used when document output was not requested."""
-
-    return {
-        "schema_version": "pdf_report_status.v1",
-        "status": "not_requested",
-        "path": "",
-        "generated_at": utc_now(),
-        "page_count": 0,
-        "byte_count": 0,
-        "font_mode": "",
-        "error_type": "",
-        "error_message": "",
-    }
-
-
-def reserve_run_dir(output_dir: Path, requested_run_id: str) -> tuple[str, Path]:
-    """Atomically reserve a unique, human-readable run directory."""
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    sequence = 1
-    while True:
-        run_id = requested_run_id if sequence == 1 else f"{requested_run_id}--{sequence:02d}"
-        run_dir = output_dir / run_id
-        try:
-            run_dir.mkdir(exist_ok=False)
-        except FileExistsError:
-            sequence += 1
-            continue
-        return run_id, run_dir
 
 
 def build_source_requests(
@@ -1643,24 +1598,6 @@ def x_post_date(url: str) -> str:
         return ""
 
 
-def merge_execution_reports(*reports: dict[str, Any]) -> dict[str, Any]:
-    base = dict(reports[0]) if reports else {}
-    requests = [request for report in reports for request in report.get("requests") or []]
-    status_counts: dict[str, int] = {}
-    for request in requests:
-        status = str(request.get("status") or "unknown")
-        status_counts[status] = status_counts.get(status, 0) + 1
-    base.update(
-        {
-            "generated_at": utc_now(),
-            "request_count": len(requests),
-            "status_counts": status_counts,
-            "requests": requests,
-        }
-    )
-    return base
-
-
 RECOVERABLE_BROWSER_REASONS = {
     "access_blocked",
     "browser_verification",
@@ -1960,141 +1897,7 @@ def target_fitness_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"disposition_counts": dispositions, "rejection_reason_counts": reasons}
 
 
-def normalize_rows(results: list[CollectionResult]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for result in results:
-        for row in result.rows:
-            normalized = dict(row)
-            normalized.setdefault("source_id", result.source_id)
-            normalized.setdefault("connector", result.connector)
-            normalized.setdefault("url", normalized.get("source_url") or "")
-            source_evidence_id = str(normalized.get("evidence_id") or "")
-            if source_evidence_id and not normalized.get("source_evidence_id"):
-                normalized["source_evidence_id"] = source_evidence_id
-            normalized["evidence_id"] = f"ev-{len(rows) + 1:04d}"
-            rows.append(normalized)
-    return rows
+def merge_execution_reports(*reports: dict[str, Any]) -> dict[str, Any]:
+    """Compatibility wrapper for callers that used the former runner helper."""
 
-
-def enrich_rows_with_freshness(
-    rows: list[dict[str, Any]],
-    *,
-    query_plan: dict[str, Any],
-    as_of: str,
-) -> list[dict[str, Any]]:
-    windows: dict[str, int | None] = {}
-    for query in query_plan.get("queries") or []:
-        facet_id = str(query.get("facet_id") or "")
-        window = query.get("freshness_window_days")
-        windows[facet_id] = int(window) if window is not None else None
-    enriched: list[dict[str, Any]] = []
-    for row in rows:
-        facet_id = str(row.get("facet_id") or "")
-        window = windows.get(facet_id)
-        fresh = enrich_row_freshness(row, as_of=as_of, window_days=window)
-        fresh["freshness_window_days"] = window
-        enriched.append(fresh)
-    return enriched
-
-
-def build_evidence_chunks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    chunks: list[dict[str, Any]] = []
-    for row in rows:
-        blocks = row.get("content_blocks")
-        if not isinstance(blocks, list) or not blocks:
-            continue
-        parent_evidence_id = str(row.get("evidence_id") or "")
-        inherited = {
-            key: value
-            for key, value in row.items()
-            if key
-            not in {
-                "content_blocks",
-                "evidence_id",
-                "structured_data",
-                "tables",
-                "text",
-                "text_excerpt",
-            }
-        }
-        for chunk in build_chunks(
-            blocks,
-            parent_evidence_id=parent_evidence_id,
-        ):
-            chunk_id = str(chunk["chunk_id"])
-            heading = str(chunk.get("heading") or "")
-            chunks.append(
-                {
-                    **inherited,
-                    **chunk,
-                    "evidence_id": chunk_id,
-                    "source_evidence_id": parent_evidence_id,
-                    "parent_evidence_id": parent_evidence_id,
-                    "is_chunk": True,
-                    "record_kind": "evidence_chunk",
-                    "title": " — ".join(
-                        value
-                        for value in (str(row.get("title") or ""), heading)
-                        if value
-                    ),
-                }
-            )
-    return chunks
-
-
-def build_analysis_rows(
-    rows: list[dict[str, Any]],
-    chunks: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Use semantic chunks in place of truncated parents for analysis and citations."""
-
-    chunked_parent_ids = {
-        str(chunk.get("parent_evidence_id") or "") for chunk in chunks
-    }
-    unchunked = [
-        row
-        for row in rows
-        if str(row.get("evidence_id") or "") not in chunked_parent_ids
-    ]
-    return [*unchunked, *chunks]
-
-
-def sanitize_rows_for_artifacts(
-    rows: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[str]]:
-    sanitized_rows: list[dict[str, Any]] = []
-    warnings: list[str] = []
-    for index, row in enumerate(rows, start=1):
-        sensitive = sorted({*sensitive_paths(row), *sensitive_value_paths(row)})
-        safe_row = sanitize_for_artifact(row)
-        if not isinstance(safe_row, dict):
-            safe_row = {}
-        if sensitive:
-            row_label = str(
-                safe_row.get("evidence_id")
-                or safe_row.get("source_id")
-                or safe_row.get("title")
-                or f"row_{index}"
-            )
-            warnings.append(
-                "artifact sanitation redacted/dropped sensitive field(s) in "
-                f"{row_label}: {','.join(sensitive[:8])}"
-            )
-        sanitized_rows.append(safe_row)
-    return sanitized_rows, warnings
-
-
-def run_status(
-    *,
-    dry_run: bool,
-    rows: list[dict[str, Any]],
-    warnings: list[str],
-    source_requests: list[CollectionRequest],
-) -> str:
-    if dry_run:
-        return "planned"
-    if not source_requests:
-        return "failed_no_sources"
-    if rows:
-        return "complete_with_warnings" if warnings else "complete"
-    return "failed_no_rows"
+    return CollectionPipeline.merge_reports(*reports)

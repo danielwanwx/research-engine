@@ -1,9 +1,11 @@
 import json
+import builtins
 from pathlib import Path
 
 import pytest
 
 from research_engine.cli import main
+from research_engine.optional_dependencies import MissingOptionalDependency
 from research_engine.runner import ResearchEngine
 
 
@@ -138,6 +140,65 @@ def test_cli_report_mode_defaults_to_summary_and_accepts_full(tmp_path, capsys):
     assert exit_code == 0
     assert full_payload["report_mode"] == "full"
     assert (full_dir / full_payload["run_id"] / "research_report.md").exists()
+
+
+def test_summary_mode_does_not_import_reportlab(tmp_path, monkeypatch):
+    real_import = builtins.__import__
+
+    def reject_reportlab(name, *args, **kwargs):
+        if name == "reportlab" or name.startswith("reportlab."):
+            raise ModuleNotFoundError("reportlab is not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", reject_reportlab)
+    result = ResearchEngine(output_dir=tmp_path).run(
+        "summary without report renderer",
+        dry_run=True,
+        run_date="2026-08-10",
+        slug="core-only",
+    )
+
+    assert result.report_mode == "summary"
+    assert (Path(result.run_dir) / "research_summary.json").exists()
+
+
+def test_full_mode_missing_report_extra_has_actionable_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "research_engine.optional_dependencies.importlib.util.find_spec",
+        lambda name: None if name == "reportlab" else None,
+    )
+
+    with pytest.raises(MissingOptionalDependency, match=r"pip install research-engine\[report\]"):
+        ResearchEngine(output_dir=tmp_path).run(
+            "full report without optional dependency",
+            report_mode="full",
+            dry_run=True,
+        )
+    assert not list(tmp_path.iterdir())
+
+
+def test_cli_full_mode_missing_report_extra_is_concise(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "research_engine.optional_dependencies.importlib.util.find_spec",
+        lambda name: None if name == "reportlab" else None,
+    )
+
+    exit_code = main(
+        [
+            "run",
+            "full report without optional dependency",
+            "--report-mode",
+            "full",
+            "--dry-run",
+            "--output",
+            str(tmp_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "pip install research-engine[report]" in captured.err
+    assert captured.out == ""
 
 
 def test_research_engine_skill_reads_summary_and_requires_explicit_full_report():

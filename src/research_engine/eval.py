@@ -23,8 +23,8 @@ from research_engine.synthesis import build_claim_review, build_supply_demand_ma
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_FIXTURE = REPO_ROOT / "evals" / "v1" / "fixtures" / "adversarial_rows.json"
-DEFAULT_V2_FIXTURE = REPO_ROOT / "evals" / "v2" / "fixtures" / "benchmarks.json"
+DEFAULT_FIXTURE = REPO_ROOT / "evals" / "fixtures" / "adversarial_rows.json"
+DEFAULT_V2_FIXTURE = REPO_ROOT / "evals" / "fixtures" / "benchmarks.json"
 
 
 class _OfflineResponse:

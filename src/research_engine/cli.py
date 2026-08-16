@@ -12,6 +12,7 @@ from research_engine.artifacts import append_jsonl
 from research_engine.browser_auth import ConsentStore, clear_browser_profile
 from research_engine.doctor import render_doctor_text, run_doctor
 from research_engine.models import utc_now
+from research_engine.optional_dependencies import MissingOptionalDependency
 from research_engine.runner import ResearchEngine
 from research_engine.security import redact_command, redact_text
 from research_engine.targets import ResearchTarget
@@ -339,6 +340,21 @@ def main(argv: list[str] | None = None) -> int:
             report_mode=args.report_mode,
         )
         rendered_result = json.dumps(result.as_dict(), ensure_ascii=False, indent=2)
+    except MissingOptionalDependency as exc:
+        exit_status = 2
+        try:
+            append_invocation_record(
+                output_dir=args.output,
+                raw_args=raw_args,
+                started_at=started_at,
+                exit_status=exit_status,
+                result=result,
+                error=exc,
+            )
+        except Exception as journal_error:
+            print(f"invocation journal failed: {redact_text(journal_error)}", file=sys.stderr)
+        print(f"error: {exc}", file=sys.stderr)
+        return exit_status
     except BaseException as exc:
         if isinstance(exc, KeyboardInterrupt):
             exit_status = 130

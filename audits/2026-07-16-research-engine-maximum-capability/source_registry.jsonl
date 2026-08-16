@@ -1,5 +1,0 @@
-{"id":"repo","kind":"internal","ref":"/Users/danielwan/Project/research-engine @ 134662c + dirty worktree","retrieved":"2026-07-16"}
-{"id":"benchmark_runs","kind":"internal","ref":"runs/2026-07-16-* (8 benchmark bundles; B1 dir later overwritten by B7 — see decision_log)","retrieved":"2026-07-16"}
-{"id":"doctor","kind":"internal","ref":"doctor_output.json","retrieved":"2026-07-16"}
-{"id":"tests","kind":"internal","ref":"pytest_output.txt (127 passed, 0.19s)","retrieved":"2026-07-16"}
-{"id":"external","kind":"external_fallback","ref":"external_source_registry.jsonl (11 systems/articles, labeled)","retrieved":"2026-07-16"}

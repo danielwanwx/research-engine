@@ -5,6 +5,12 @@ description: Use when the user asks to research, investigate, query, verify clai
 
 # Research Engine
 
+Research Engine is an evidence runtime for agents. Use its bounded summary
+contract by default; do not generate a long report unless the user requests
+one. From the canonical checkout, read the current artifact and connector
+state contract at
+`/Users/danielwan/Project/research-engine/docs/artifact-contract.md`.
+
 ## Execution Defaults
 
 Start research directly when the topic and requested outcome are clear. Infer
@@ -52,6 +58,15 @@ PYTHONPATH=src /opt/homebrew/opt/python@3.10/bin/python3.10 -c \
    incomplete, contested, or the user requires citation verification. Read
    `run_manifest.json`, `query_plan.json`, and `loop_contract.json` when the
    run needs audit/debug context.
+6. Keep connector execution and research conclusions separate. In
+   `collection_execution.json`, inspect the operational request `status`
+   (`ok`, `warning`, `failed`, `retry_exhausted`, `rate_limit`, `robots_denied`,
+   `timeout`, or `cache_hit`), `row_count`, and optional `failure_reason`
+   (`dns_resolution_failed`, `network_timeout`, `network_unavailable`, or
+   `tls_failure`). A failed connector is not evidence that the requested
+   phenomenon does not exist. A claim-level `insufficient_evidence` verdict and
+   a run-level `failed_no_rows` status must remain distinct from connector
+   execution outcomes.
 
 ## Source Rules
 

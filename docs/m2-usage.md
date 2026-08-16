@@ -79,9 +79,10 @@ extraction is explicitly invalid.
 required facets omitted by the selected query budget. Quality and relevance are
 separate scores, and the report preview is source-diverse.
 
-Each run also converts the standard Markdown report to an A4 PDF with embedded CJK
+Full report mode converts the standard Markdown report to an A4 PDF with embedded CJK
 fonts when available, clickable evidence links, page headers, footers, and page numbers.
-The PDF is a presentation of existing artifacts and does not run a second synthesis pass.
+It is an optional presentation of existing artifacts and does not run a second
+synthesis pass. Summary mode does not import or require ReportLab.
 
 ## Repair and conflict limits
 
