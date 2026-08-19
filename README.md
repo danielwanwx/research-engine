@@ -149,9 +149,10 @@ Full mode additionally writes `research_report.md`, `research_report.pdf`, and
 Connector and research states remain separate. Each request record in
 `collection_execution.json` uses the operational `status` field (`ok`,
 `warning`, `failed`, `retry_exhausted`, `rate_limit`, `robots_denied`,
-`timeout`, or `cache_hit`), a `row_count`, and, for classified transport
+`timeout`, `cache_hit`, or `blocked`), a `row_count`, and, for classified transport
 failures, an optional `failure_reason` such as `dns_resolution_failed`,
-`network_timeout`, `network_unavailable`, or `tls_failure`.
+`network_timeout`, `network_unavailable`, `tls_failure`, or
+`infrastructure_unavailable`.
 
 This makes the important distinction explicit:
 
@@ -164,6 +165,11 @@ This makes the important distinction explicit:
   execution status;
 - the run-level `failed_no_rows` status means no evidence rows were available
   after collection and repair.
+
+When DNS resolution fails across independent hosts within the configured
+window, later connector requests are marked `blocked` instead of making futile
+calls. The execution report, manifest, repair record, and summary expose
+`network_diagnostics` with the affected hosts and detection basis.
 
 An external failure is never treated as evidence that the researched phenomenon
 does not exist. Inspect `collection_execution.json`, its `warnings`,

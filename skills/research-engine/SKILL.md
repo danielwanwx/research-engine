@@ -76,9 +76,11 @@ PYTHONPATH=src python3 -c \
 7. Keep connector execution and research conclusions separate. In
    `collection_execution.json`, inspect the operational request `status`
    (`ok`, `warning`, `failed`, `retry_exhausted`, `rate_limit`, `robots_denied`,
-   `timeout`, or `cache_hit`), `row_count`, and optional `failure_reason`
+   `timeout`, `cache_hit`, or `blocked`), `row_count`, and optional `failure_reason`
    (`dns_resolution_failed`, `network_timeout`, `network_unavailable`, or
-   `tls_failure`). A failed connector is not evidence that the requested
+   `tls_failure`). A shared DNS circuit uses `blocked` with
+   `infrastructure_unavailable`; inspect `network_diagnostics` for affected
+   hosts and the detection basis. A failed connector is not evidence that the requested
    phenomenon does not exist. A claim-level `insufficient_evidence` verdict and
    a run-level `failed_no_rows` status must remain distinct from connector
    execution outcomes.

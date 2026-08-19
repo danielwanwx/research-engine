@@ -580,6 +580,10 @@ class ResearchEngine:
                     )
         query_plan["auth_challenge_summary"] = summarize_auth_challenges(auth_challenges)
         reconcile_query_plan(query_plan, execution_report)
+        if execution_report.get("network_diagnostics"):
+            repair_record["network_diagnostics"] = dict(
+                execution_report["network_diagnostics"]
+            )
         rows = normalize_rows(collection_results)
         rows, sanitation_warnings = sanitize_rows_for_artifacts(rows)
         warnings.extend(sanitation_warnings)
@@ -725,6 +729,7 @@ class ResearchEngine:
                 "pending_human_actions": query_plan["auth_challenge_summary"][
                     "pending_human_actions"
                 ],
+                "network_diagnostics": execution_report.get("network_diagnostics"),
             },
             "quality_summary": {
                 "average_quality_score": quality_report.get("average_quality_score"),
@@ -768,6 +773,7 @@ class ResearchEngine:
             loop_record=loop_record,
             rows=rows,
             facet_coverage=dict(quality_report.get("facet_coverage") or {}),
+            network_diagnostics=execution_report.get("network_diagnostics"),
         )
         pdf_status, report_status = write_summary_and_report(
             run_dir,
@@ -1404,6 +1410,7 @@ def build_repair_failures(
         records = records_by_query.get(query_id, [])
         failed_statuses = {
             "failed",
+            "blocked",
             "rate_limit",
             "retry_exhausted",
             "robots_denied",
@@ -1422,6 +1429,7 @@ def build_repair_failures(
                         "network_timeout",
                         "network_unavailable",
                         "tls_failure",
+                        "infrastructure_unavailable",
                     }
                 }
             )
@@ -1545,7 +1553,7 @@ def reconcile_query_plan(
         statuses = {str(record.get("status") or "unknown") for record in records}
         if records:
             query["execution_statuses"] = sorted(statuses)
-            failed_statuses = {"failed", "retry_exhausted", "timeout"}
+            failed_statuses = {"failed", "blocked", "retry_exhausted", "timeout"}
             if statuses and statuses.issubset(failed_statuses):
                 query["status"] = "failed"
                 counts["failed"] += 1

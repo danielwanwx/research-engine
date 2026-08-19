@@ -35,6 +35,8 @@ class ConnectorExecutionOptions:
     overall_deadline_seconds: float | None = None
     host_max_concurrency: int = 2
     host_delay_seconds: float = 0.1
+    dns_circuit_breaker_threshold: int = 2
+    dns_circuit_breaker_window_seconds: float = 30.0
 
 
 def execute_collection_requests(
@@ -47,6 +49,7 @@ def execute_collection_requests(
 
     resolved_options = options or ConnectorExecutionOptions()
     scheduler = _HostScheduler(resolved_options)
+    network_circuit = _NetworkCircuitBreaker(resolved_options)
     if not requests:
         return [], [], build_execution_report(options=resolved_options, records=[])
 
@@ -60,6 +63,7 @@ def execute_collection_requests(
             connector_providers=connector_providers,
             options=resolved_options,
             scheduler=scheduler,
+            network_circuit=network_circuit,
         )
 
     timed_out = False
@@ -105,6 +109,7 @@ def execute_collection_requests(
     return ordered_results, warnings, build_execution_report(
         options=resolved_options,
         records=ordered_records,
+        network_diagnostics=network_circuit.diagnostics(),
     )
 
 
@@ -114,9 +119,11 @@ def execute_one_request(
     connector_providers: dict[str, ConnectorProvider],
     options: ConnectorExecutionOptions,
     scheduler: _HostScheduler | None = None,
+    network_circuit: _NetworkCircuitBreaker | None = None,
 ) -> tuple[CollectionResult | None, dict[str, Any]]:
     connector_id = str(request.source.get("connector") or "")
     resolved_scheduler = scheduler or _HostScheduler(options)
+    resolved_circuit = network_circuit or _NetworkCircuitBreaker(options)
     started = options.monotonic_fn()
     cache_key = build_cache_key(request, connector_id=connector_id)
     warnings: list[str] = []
@@ -176,6 +183,25 @@ def execute_one_request(
     paid_connector = bool(request.source.get("paid_call")) or connector_id == "xai_discovery"
     max_attempts = 1 if paid_connector else max(1, options.retries + 1)
     for attempt in range(1, max_attempts + 1):
+        if resolved_circuit.is_open():
+            warning = (
+                f"{connector_id} connector blocked for {request.source_id}: "
+                "shared network infrastructure unavailable"
+            )
+            return None, build_record(
+                request=request,
+                connector_id=connector_id,
+                status="blocked",
+                attempts=attempts,
+                cache_hit=False,
+                row_count=0,
+                warnings=[warning],
+                started=started,
+                retry_delays=retry_delays,
+                host_wait_seconds=host_wait_seconds,
+                clock_fn=options.monotonic_fn,
+                failure_reason="infrastructure_unavailable",
+            )
         attempts = attempt
         connector = provider() if callable(provider) else provider
         try:
@@ -201,6 +227,27 @@ def execute_one_request(
             )
         except Exception as exc:
             last_error = str(exc)
+            failure_reason = transient_network_reason(exc)
+            if failure_reason == "dns_resolution_failed":
+                resolved_circuit.observe_dns_failure(request_host(request))
+                if resolved_circuit.is_open():
+                    warning = failure_warning(
+                        connector_id, request.source_id, exc, status="retry_exhausted"
+                    )
+                    return None, build_record(
+                        request=request,
+                        connector_id=connector_id,
+                        status="retry_exhausted",
+                        attempts=attempts,
+                        cache_hit=False,
+                        row_count=0,
+                        warnings=[warning],
+                        started=started,
+                        retry_delays=retry_delays,
+                        host_wait_seconds=host_wait_seconds,
+                        clock_fn=options.monotonic_fn,
+                        failure_reason=failure_reason,
+                    )
             if attempt < max_attempts:
                 delay = retry_delay_seconds(
                     attempt,
@@ -316,12 +363,13 @@ def build_execution_report(
     *,
     options: ConnectorExecutionOptions,
     records: list[dict[str, Any]],
+    network_diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status_counts: dict[str, int] = {}
     for record in records:
         status = str(record.get("status") or "unknown")
         status_counts[status] = status_counts.get(status, 0) + 1
-    return {
+    report = {
         "generated_at": utc_now(),
         "max_workers": options.max_workers,
         "retries": options.retries,
@@ -334,6 +382,9 @@ def build_execution_report(
         "status_counts": status_counts,
         "requests": records,
     }
+    if network_diagnostics and network_diagnostics.get("environment_unavailable"):
+        report["network_diagnostics"] = network_diagnostics
+    return report
 
 
 def build_record(
@@ -455,6 +506,66 @@ def request_host(request: CollectionRequest) -> str:
         if host:
             return host
     return ""
+
+
+class _NetworkCircuitBreaker:
+    """Stop futile calls after DNS fails across independent hosts.
+
+    A single broken hostname is deliberately insufficient: that remains an
+    upstream-specific failure and must not prevent requests to other hosts.
+    """
+
+    def __init__(self, options: ConnectorExecutionOptions) -> None:
+        self._threshold = max(2, int(options.dns_circuit_breaker_threshold))
+        self._window_seconds = max(1.0, float(options.dns_circuit_breaker_window_seconds))
+        self._clock_fn = options.monotonic_fn
+        self._lock = threading.Lock()
+        self._dns_failure_hosts: dict[str, float] = {}
+        self._first_failure_at = ""
+        self._opened_at = ""
+
+    def observe_dns_failure(self, host: str) -> None:
+        if not host:
+            return
+        with self._lock:
+            now = self._clock_fn()
+            self._dns_failure_hosts = {
+                observed_host: observed_at
+                for observed_host, observed_at in self._dns_failure_hosts.items()
+                if now - observed_at <= self._window_seconds
+            }
+            if not self._dns_failure_hosts:
+                self._first_failure_at = ""
+            if not self._first_failure_at:
+                self._first_failure_at = utc_now()
+            self._dns_failure_hosts[host.lower()] = now
+            if len(self._dns_failure_hosts) >= self._threshold and not self._opened_at:
+                self._opened_at = utc_now()
+
+    def is_open(self) -> bool:
+        with self._lock:
+            return bool(self._opened_at)
+
+    def diagnostics(self) -> dict[str, Any]:
+        with self._lock:
+            hosts = sorted(self._dns_failure_hosts)
+            opened_at = self._opened_at
+            first_failure_at = self._first_failure_at
+        return {
+            "environment_unavailable": bool(opened_at),
+            "category": "dns_resolution_failed",
+            "affected_hosts": hosts,
+            "first_failure_at": first_failure_at,
+            "detected_at": opened_at,
+            "detection_basis": (
+                f"DNS resolution failed for {len(hosts)} distinct hosts; "
+                f"threshold={self._threshold}; window_seconds={self._window_seconds:g}"
+            ),
+            "recommended_actions": [
+                "rerun in an execution environment with approved network access",
+                "use compliant external-evidence or authenticated-browser fallback",
+            ],
+        }
 
 
 class DeadlineExceeded(TimeoutError):

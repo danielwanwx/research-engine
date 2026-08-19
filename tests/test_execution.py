@@ -1,3 +1,5 @@
+import socket
+
 from research_engine.execution import (
     ConnectorExecutionOptions,
     execute_collection_requests,
@@ -62,6 +64,14 @@ class RateLimitedConnector:
 class AlwaysFailConnector:
     def collect(self, request):
         raise TimeoutError("temporary")
+
+
+class DnsFailConnector:
+    calls = 0
+
+    def collect(self, request):
+        self.__class__.calls += 1
+        raise socket.gaierror(-2, "Name or service not known")
 
 
 class MetadataStatusConnector:
@@ -278,6 +288,123 @@ def test_non_rate_limit_retry_exhaustion_has_distinct_status():
     )
 
     assert report["requests"][0]["status"] == "retry_exhausted"
+
+
+def _network_request(source_id, host):
+    return CollectionRequest(
+        source={
+            "source_id": source_id,
+            "connector": "dns",
+            "endpoint": f"https://{host}/api",
+        },
+        topic="topic",
+        run_date="2026-08-17",
+        depth="quick",
+        max_results=1,
+    )
+
+
+def test_single_host_dns_failure_does_not_open_global_circuit():
+    DnsFailConnector.calls = 0
+    requests = [
+        _network_request("first", "broken.example"),
+        _network_request("second", "broken.example"),
+    ]
+
+    _, _, report = execute_collection_requests(
+        requests,
+        connector_providers={"dns": DnsFailConnector},
+        options=ConnectorExecutionOptions(
+            max_workers=1, retries=1, backoff_base_seconds=0
+        ),
+    )
+
+    assert DnsFailConnector.calls == 4
+    assert [record["status"] for record in report["requests"]] == [
+        "retry_exhausted",
+        "retry_exhausted",
+    ]
+    assert "network_diagnostics" not in report
+
+
+def test_dns_failures_on_distinct_hosts_open_circuit_and_block_later_requests():
+    DnsFailConnector.calls = 0
+    requests = [
+        _network_request("first", "one.example"),
+        _network_request("second", "two.example"),
+        _network_request("third", "three.example"),
+    ]
+
+    _, warnings, report = execute_collection_requests(
+        requests,
+        connector_providers={"dns": DnsFailConnector},
+        options=ConnectorExecutionOptions(
+            max_workers=1, retries=1, backoff_base_seconds=0
+        ),
+    )
+
+    assert DnsFailConnector.calls == 3
+    assert [record["status"] for record in report["requests"]] == [
+        "retry_exhausted",
+        "retry_exhausted",
+        "blocked",
+    ]
+    assert report["requests"][2]["attempts"] == 0
+    assert report["requests"][2]["failure_reason"] == "infrastructure_unavailable"
+    diagnostics = report["network_diagnostics"]
+    assert diagnostics["category"] == "dns_resolution_failed"
+    assert diagnostics["affected_hosts"] == ["one.example", "two.example"]
+    assert diagnostics["first_failure_at"]
+    assert "threshold=2" in diagnostics["detection_basis"]
+    assert all("Name or service not known" not in warning for warning in warnings)
+
+
+def test_timeout_does_not_open_dns_circuit():
+    requests = [
+        _network_request("first", "one.example"),
+        _network_request("second", "two.example"),
+    ]
+
+    _, _, report = execute_collection_requests(
+        requests,
+        connector_providers={"dns": AlwaysFailConnector},
+        options=ConnectorExecutionOptions(
+            max_workers=1, retries=0, backoff_base_seconds=0
+        ),
+    )
+
+    assert [record["failure_reason"] for record in report["requests"]] == [
+        "network_timeout",
+        "network_timeout",
+    ]
+    assert "network_diagnostics" not in report
+
+
+def test_dns_failures_outside_detection_window_do_not_open_circuit():
+    clock = FakeClock()
+
+    class SlowDnsFailConnector:
+        def collect(self, request):
+            clock.now += 31
+            raise socket.gaierror(-2, "Name or service not known")
+
+    requests = [
+        _network_request("first", "one.example"),
+        _network_request("second", "two.example"),
+    ]
+    _, _, report = execute_collection_requests(
+        requests,
+        connector_providers={"dns": SlowDnsFailConnector},
+        options=ConnectorExecutionOptions(
+            max_workers=1,
+            retries=0,
+            monotonic_fn=clock.monotonic,
+            dns_circuit_breaker_window_seconds=30,
+        ),
+    )
+
+    assert [record["status"] for record in report["requests"]] == ["failed", "failed"]
+    assert "network_diagnostics" not in report
 
 
 def test_result_connector_statuses_remain_distinct():

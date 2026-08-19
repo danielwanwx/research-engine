@@ -55,6 +55,7 @@ def build_research_summary(
     loop_record: dict[str, Any],
     rows: list[dict[str, Any]],
     facet_coverage: dict[str, Any] | None = None,
+    network_diagnostics: dict[str, Any] | None = None,
     evidence_limit: int = SUMMARY_EVIDENCE_LIMIT,
 ) -> dict[str, Any]:
     """Build the bounded machine-facing conclusion for a research run.
@@ -106,6 +107,7 @@ def build_research_summary(
         ),
         "loop_status": str(loop.get("loop_status") or "unknown"),
         "stop_reason": str(loop.get("stop_reason") or "unknown"),
+        "network_diagnostics": dict(network_diagnostics or {}),
     }
 
 

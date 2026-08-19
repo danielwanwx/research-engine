@@ -45,6 +45,30 @@ class CollectionPipeline:
                 "requests": requests,
             }
         )
+        diagnostics = [
+            dict(report.get("network_diagnostics") or {})
+            for report in reports
+            if (report.get("network_diagnostics") or {}).get("environment_unavailable")
+        ]
+        if diagnostics:
+            failure_times = [
+                str(item.get("first_failure_at"))
+                for item in diagnostics
+                if item.get("first_failure_at")
+            ]
+            hosts = sorted(
+                {
+                    str(host)
+                    for diagnostic in diagnostics
+                    for host in diagnostic.get("affected_hosts") or []
+                    if str(host)
+                }
+            )
+            base["network_diagnostics"] = {
+                **diagnostics[0],
+                "affected_hosts": hosts,
+                "first_failure_at": min(failure_times) if failure_times else "",
+            }
         return base
 
 

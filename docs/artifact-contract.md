@@ -56,10 +56,13 @@ Transport state and research state are separate. Each request in
 an optional normalized `failure_reason`:
 
 - operational statuses include `ok`, `warning`, `failed`, `retry_exhausted`,
-  `rate_limit`, `robots_denied`, `timeout`, and `cache_hit`;
+  `rate_limit`, `robots_denied`, `timeout`, `cache_hit`, and `blocked`;
 - transport failures are represented by `status: failed` or
   `status: retry_exhausted` plus a reason such as `dns_resolution_failed`,
   `network_timeout`, `network_unavailable`, or `tls_failure`;
+- after DNS failures across independent hosts open the shared circuit, later
+  requests use `status: blocked` and `failure_reason:
+  infrastructure_unavailable`;
 - a successful zero-row response has an operational success status and
   `row_count: 0`;
 - insufficient evidence is a claim-level result in `claim_review.json` (for
@@ -73,6 +76,11 @@ For example, an AnySearch `URLError` is retried and produces
 No network failure is converted into evidence that the researched phenomenon
 does not exist. Inspect `warnings`, `status_counts`, `row_count`, and
 `failure_reason` before interpreting an empty result.
+
+When the shared DNS circuit opens, `network_diagnostics` is written to the
+execution report and propagated to the manifest, repair record, and bounded
+summary. It records the affected hosts and detection basis without exposing raw
+resolver errors.
 
 ## Pack selection
 

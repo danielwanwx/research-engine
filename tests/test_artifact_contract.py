@@ -42,6 +42,9 @@ def test_documented_execution_contract_matches_anysearch_network_failure():
     assert "retry_exhausted" in documented
     assert "failure_reason" in documented
     assert "row_count" in documented
+    assert "blocked" in documented
+    assert "infrastructure_unavailable" in documented
+    assert "network_diagnostics" in documented
 
     def unavailable(_request, _timeout):
         raise URLError(socket.gaierror(8, "private DNS detail"))
