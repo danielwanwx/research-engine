@@ -61,3 +61,17 @@ def test_documented_execution_contract_matches_anysearch_network_failure():
     assert record["failure_reason"] == "dns_resolution_failed"
     assert record["row_count"] == 0
     assert warnings and "TransientNetworkError (dns_resolution_failed)" in warnings[0]
+
+
+def test_skill_preflights_dns_and_reruns_unchanged_command_with_network_access():
+    skill = (
+        Path(__file__).resolve().parents[1] / "skills/research-engine/SKILL.md"
+    ).read_text(encoding="utf-8")
+    normalized = " ".join(skill.split())
+
+    assert "socket.getaddrinfo" in normalized
+    assert "same execution environment" in normalized
+    assert "network-enabled execution" in normalized
+    assert "exact same Research Engine command" in normalized
+    assert "Do not interpret" in normalized
+    assert "successful zero-row" in normalized

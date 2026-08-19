@@ -1,7 +1,7 @@
 # Codex Network Execution Design
 
 **Date:** 2026-08-19  
-**Status:** Approved for implementation planning
+**Status:** Implemented
 
 ## Problem
 
@@ -44,4 +44,3 @@ Existing uncommitted changes in `artifacts.py`, `collection_pipeline.py`, `execu
 4. The installed Skill is byte-identical to the repository Skill.
 5. A network-enabled Research Engine smoke run collects evidence successfully.
 6. The commit contains only the design, Skill, and directly related regression test; unrelated working-tree changes and user output directories remain untouched.
-

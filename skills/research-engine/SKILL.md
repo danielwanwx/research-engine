@@ -36,14 +36,31 @@ PYTHONPATH=src python3 -m research_engine.cli \
   run "<topic>" --pack auto --depth deep --report-mode summary --output runs
 ```
 
-3. The default `--report-mode summary` writes the concise, machine-readable
+3. Before a network-backed run, preflight the selected search host in the same
+   execution environment as the planned command. For the default AnySearch
+   provider, use:
+
+```bash
+/opt/homebrew/opt/python@3.10/bin/python3.10 -c \
+  'import socket; socket.getaddrinfo("api.anysearch.com", 443)'
+```
+
+   If this fails because the sandbox has no DNS configuration, rerun the exact
+   same Research Engine command using network-enabled execution approval (for
+   Codex shell tools, request the network/sandbox escalation on that command).
+   Do not change the topic, pack, flags, output path, or report mode during the
+   rerun. If network-enabled execution is not authorized, stop and report the
+   infrastructure limitation. Do not interpret sandbox DNS failure as a local
+   machine DNS fault, an AnySearch successful zero-row response, or evidence
+   about the research topic.
+4. The default `--report-mode summary` writes the concise, machine-readable
    `research_summary.json` and skips human-facing documents. Pass
    `--report-mode full` only when the user explicitly requests a report,
    article, long-form analysis, Markdown document, or PDF. Add advanced flags such as `--scope-file`, `--external-evidence`,
    `--browser-auth`, or an explicit `--pack` only when the request requires
    them. Keep `--pack auto` for ordinary company, role, business, and market
    research; do not force `interview_prep` without explicit interview intent.
-4. Before a run, verify the module path when there is any doubt:
+5. Before a run, verify the module path when there is any doubt:
 
 ```bash
 PYTHONPATH=src python3 -c \
@@ -51,12 +68,12 @@ PYTHONPATH=src python3 -c \
 ```
 
    It must resolve under the active checkout's `src/` directory.
-5. Read `research_summary.json` first. Inspect `evidence.jsonl`,
+6. Read `research_summary.json` first. Inspect `evidence.jsonl`,
    `evidence_quality.json`, claim and loop artifacts only when the summary is
    incomplete, contested, or the user requires citation verification. Read
    `run_manifest.json`, `query_plan.json`, and `loop_contract.json` when the
    run needs audit/debug context.
-6. Keep connector execution and research conclusions separate. In
+7. Keep connector execution and research conclusions separate. In
    `collection_execution.json`, inspect the operational request `status`
    (`ok`, `warning`, `failed`, `retry_exhausted`, `rate_limit`, `robots_denied`,
    `timeout`, or `cache_hit`), `row_count`, and optional `failure_reason`
