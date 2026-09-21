@@ -96,6 +96,32 @@ description questions. Interview preparation requires explicit interview
 intent; automatic routing does not inject interview queries into general
 research.
 
+## Optional Jev public-evidence triage
+
+Jev can provide bounded, typed advisory relevance judgments for evidence a
+normal run has already collected. It is separate from collection and artifacts:
+it does not fetch, verify, add, remove, or exclude evidence rows.
+
+```bash
+research-engine jev-triage --topic "AI inference market" --allow-jev \
+  --evidence runs/<run-id>/evidence.jsonl
+```
+
+The command reads at most 32 rows or 128 KiB of input, then sends the first
+eight eligible allowlisted public rows in one request. It returns Noul
+probabilities, the returned model, measured timing, actual token usage, and
+skipped counts; remaining rows are not reviewed. Supply a bounded next batch as
+needed without altering the canonical evidence file. Browser, external, bridge,
+private, and unknown access modes are rejected before a request; only a bounded
+public evidence projection is sent.
+
+Set `TYPESAFE_API_KEY` in the invoking process, optionally use the local macOS
+Keychain service `typesafe-ai-jev`, or use `--prompt-key` for a masked,
+current-process-only key. Never put a key on the command line or in evidence.
+`--allow-jev` records existing authorization for the invocation; it does not
+solicit or infer it. When triage is useful and already authorized, prefer one
+request for the selected batch and reuse its result.
+
 ## Artifacts
 
 Each run is written to a unique directory such as

@@ -7,9 +7,8 @@ description: Use when the user asks to research, investigate, query, verify clai
 
 Research Engine is an evidence runtime for agents. Use its bounded summary
 contract by default; do not generate a long report unless the user requests
-one. From the canonical checkout, read the current artifact and connector
-state contract at
-`/Users/danielwan/Project/research-engine/docs/artifact-contract.md`.
+one. From the active repository checkout, read the current artifact and
+connector state contract at `docs/artifact-contract.md`.
 
 ## Execution Defaults
 
@@ -25,16 +24,15 @@ Use Research Engine before ad hoc browsing when the task needs evidence
 collection, source coverage, citations, contradiction checks, or reusable
 research artifacts.
 
-1. Treat `/Users/danielwan/Project/research-engine` as the canonical checkout.
-   Run the module from that checkout so the skill always uses the current source
-   tree, including uncommitted fixes. Do not invoke the globally installed
+1. Run the module from the active Research Engine checkout so the skill uses
+   the current source tree, including uncommitted fixes. Do not invoke globally installed
    `research-engine` or `research` entry points; they may resolve to an older
    installed package.
 2. Use this command for normal agent-driven research:
 
 ```bash
-cd /Users/danielwan/Project/research-engine
-PYTHONPATH=src /opt/homebrew/opt/python@3.10/bin/python3.10 -m research_engine.cli \
+cd "$(git rev-parse --show-toplevel)"
+PYTHONPATH=src python3 -m research_engine.cli \
   run "<topic>" --pack auto --depth deep --report-mode summary --output runs
 ```
 
@@ -48,11 +46,11 @@ PYTHONPATH=src /opt/homebrew/opt/python@3.10/bin/python3.10 -m research_engine.c
 4. Before a run, verify the module path when there is any doubt:
 
 ```bash
-PYTHONPATH=src /opt/homebrew/opt/python@3.10/bin/python3.10 -c \
+PYTHONPATH=src python3 -c \
   'import research_engine; print(research_engine.__file__)'
 ```
 
-   It must resolve under `/Users/danielwan/Project/research-engine/src`.
+   It must resolve under the active checkout's `src/` directory.
 5. Read `research_summary.json` first. Inspect `evidence.jsonl`,
    `evidence_quality.json`, claim and loop artifacts only when the summary is
    incomplete, contested, or the user requires citation verification. Read
@@ -67,6 +65,32 @@ PYTHONPATH=src /opt/homebrew/opt/python@3.10/bin/python3.10 -c \
    phenomenon does not exist. A claim-level `insufficient_evidence` verdict and
    a run-level `failed_no_rows` status must remain distinct from connector
    execution outcomes.
+
+## Optional Jev Advisory Triage
+
+Use `jev-triage` only when the user explicitly authorizes its TypeSafe request
+with `--allow-jev`, and only over current public evidence:
+
+```bash
+PYTHONPATH=src python3 -m research_engine.cli jev-triage \
+  --topic "<topic>" --allow-jev --evidence runs/<run-id>/evidence.jsonl
+```
+
+It reads at most 32 rows or 128 KiB, then sends the first eight eligible
+allowlisted public rows in one batch with one Noul relevance judgment per row.
+It returns typed answers, actual provider usage, measured events, and skipped
+counts; remaining rows are not reviewed, so supply a bounded next batch as
+needed without altering canonical evidence. It is advisory only: it never
+fetches or verifies sources and never modifies, drops, or excludes canonical
+evidence. Browser, external, bridge, private, and unknown access modes are
+rejected before a request.
+
+Resolve credentials from `TYPESAFE_API_KEY`, the optional local macOS Keychain
+service `typesafe-ai-jev`, or `--prompt-key` for masked current-process-only
+entry. Never ask for a key in chat, a command argument, or an evidence file.
+`--allow-jev` records existing authorization for this invocation; it does not
+solicit or infer authorization. When configured, authorized, and useful, make
+one request for the selected batch and reuse its returned judgment.
 
 ## Source Rules
 

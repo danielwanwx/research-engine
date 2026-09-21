@@ -11,6 +11,12 @@ from typing import Any
 from research_engine.artifacts import append_jsonl
 from research_engine.browser_auth import ConsentStore, clear_browser_profile
 from research_engine.doctor import render_doctor_text, run_doctor
+from research_engine.jev_triage import (
+    JevTriageError,
+    failed_triage_result,
+    load_evidence_rows,
+    triage_public_evidence,
+)
 from research_engine.models import utc_now
 from research_engine.optional_dependencies import MissingOptionalDependency
 from research_engine.runner import ResearchEngine
@@ -18,7 +24,7 @@ from research_engine.security import redact_command, redact_text
 from research_engine.targets import ResearchTarget
 
 
-COMMANDS = {"run", "doctor", "auth"}
+COMMANDS = {"run", "doctor", "auth", "jev-triage"}
 
 
 def research_main(argv: list[str] | None = None) -> int:
@@ -40,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
         "auth", help="List or revoke browser consent and dedicated profiles."
     )
     add_auth_arguments(auth_parser)
+    jev_parser = subparsers.add_parser(
+        "jev-triage",
+        help="Run bounded advisory Jev relevance triage over supplied public evidence.",
+    )
+    add_jev_triage_arguments(jev_parser)
     return parser
 
 
@@ -216,6 +227,32 @@ def add_auth_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_jev_triage_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--topic", required=True, help="Research topic for advisory relevance triage.")
+    parser.add_argument(
+        "--allow-jev",
+        action="store_true",
+        help="Explicitly allow this public-evidence-only TypeSafe request and its token usage.",
+    )
+    parser.add_argument(
+        "--prompt-key",
+        action="store_true",
+        help="If no environment or local Keychain key is available, request one masked for this process only.",
+    )
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument(
+        "--evidence",
+        type=Path,
+        help="Bounded evidence JSONL artifact or jev_triage_input.v1 JSON envelope.",
+    )
+    input_group.add_argument(
+        "--stdin",
+        dest="read_stdin",
+        action="store_true",
+        help="Read one bounded jev_triage_input.v1 JSON envelope from standard input.",
+    )
+
+
 def run_auth_command(args: argparse.Namespace) -> int:
     store = ConsentStore(args.root)
     if args.auth_action == "list":
@@ -243,6 +280,51 @@ def run_auth_command(args: argparse.Namespace) -> int:
         print("Profile cleared." if cleared else "Profile was already absent.")
         return 0
     return 2
+
+
+def run_jev_triage_command(args: argparse.Namespace) -> int:
+    """Keep advisory triage separate from normal evidence collection and artifacts."""
+
+    if not args.allow_jev:
+        result = failed_triage_result("jev_consent_required")
+    else:
+        try:
+            rows = load_evidence_rows(
+                evidence_path=args.evidence,
+                stdin=sys.stdin if args.read_stdin else None,
+            )
+        except JevTriageError as exc:
+            result = failed_triage_result(exc.code)
+        else:
+            result = triage_public_evidence(
+                topic=args.topic,
+                rows=rows,
+                allow_jev=True,
+                prompt_key=args.prompt_key,
+            )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if result.get("status") == "complete":
+        return 0
+    if result.get("error_code") in {
+        "credentials_unavailable",
+        "evidence_input_empty",
+        "evidence_input_not_utf8",
+        "evidence_input_too_large",
+        "evidence_input_unavailable",
+        "evidence_jsonl_invalid",
+        "evidence_envelope_required",
+        "evidence_row_limit_exceeded",
+        "evidence_rows_must_be_objects",
+        "input_source_required",
+        "invalid_text_encoding",
+        "jev_consent_required",
+        "no_eligible_public_evidence",
+        "topic_required",
+        "topic_too_long",
+        "unsupported_evidence_schema",
+    }:
+        return 2
+    return 1
 
 
 def append_invocation_record(
@@ -287,6 +369,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if report.get("status") == "failed" else 0
     if args.command == "auth":
         return run_auth_command(args)
+    if args.command == "jev-triage":
+        return run_jev_triage_command(args)
     started_at = utc_now()
     result = None
     rendered_result = ""
