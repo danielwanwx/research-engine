@@ -85,10 +85,17 @@ PYTHONPATH=src python3 -c \
    a run-level `failed_no_rows` status must remain distinct from connector
    execution outcomes.
 
-## Optional Jev Advisory Triage
+## Jev Advisory Triage
 
-Use `jev-triage` only when the user explicitly authorizes its TypeSafe request
-with `--allow-jev`, and only over current public evidence:
+When the active task has authorized a TypeSafe request and semantic
+prioritization will determine which results receive costly targeted
+verification, use this fast path: first complete the normal broad, multi-source
+Research Engine collection; then call `jev-triage` once for the selected
+current public evidence batch; then use browser or official-source review only
+for the highest-priority results. Do not call Jev once per row, repeatedly
+rerun the same batch, or use it as a substitute for source collection.
+
+Use `jev-triage` only over current public evidence:
 
 ```bash
 PYTHONPATH=src python3 -m research_engine.cli jev-triage \
@@ -100,16 +107,17 @@ allowlisted public rows in one batch with one Noul relevance judgment per row.
 It returns typed answers, actual provider usage, measured events, and skipped
 counts; remaining rows are not reviewed, so supply a bounded next batch as
 needed without altering canonical evidence. It is advisory only: it never
-fetches or verifies sources and never modifies, drops, or excludes canonical
-evidence. Browser, external, bridge, private, and unknown access modes are
-rejected before a request.
+fetches or verifies sources, proves a source is current or open, or modifies,
+drops, or excludes canonical evidence. Browser, external, bridge, private, and
+unknown access modes are rejected before a request.
 
 Resolve credentials from `TYPESAFE_API_KEY`, the optional local macOS Keychain
 service `typesafe-ai-jev`, or `--prompt-key` for masked current-process-only
 entry. Never ask for a key in chat, a command argument, or an evidence file.
 `--allow-jev` records existing authorization for this invocation; it does not
 solicit or infer authorization. When configured, authorized, and useful, make
-one request for the selected batch and reuse its returned judgment.
+one request for the selected batch and reuse its returned judgment before
+opening targeted browser pages.
 
 ## Source Rules
 
