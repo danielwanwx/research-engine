@@ -26,7 +26,8 @@ dependencies = []
 report = ["reportlab>=4.0"]
 browser = ["playwright>=1.49"]
 all = ["reportlab>=4.0", "playwright>=1.49"]
-dev = ["pypdf>=5.0", "pytest>=8.0", "ruff>=0.8"]
+# Pin lint rules until a deliberate repository-wide Ruff migration is reviewed.
+dev = ["pypdf>=5.0", "pytest>=8.0", "ruff==0.15.20"]
 
 [project.scripts]
 research = "research_engine.cli:research_main"
